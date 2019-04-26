@@ -1,266 +1,216 @@
 /obj/item/weapon/reagent_containers/food/drinks/cans
-	var canopened = 0
-
-	attack_self(mob/user as mob)
-		if (canopened == 0)
-			playsound(src.loc,'sound/effects/canopen.ogg', rand(10,50), 1)
-			user << "<span class='notice'>You open the drink with an audible pop!</span>"
-			canopened = 1
-		else
-			return
-
-	attack(mob/M as mob, mob/user as mob, def_zone)
-		if (canopened == 0)
-			user << "<span class='notice'> You need to open the drink!</span>"
-			return
-		var/datum/reagents/R = src.reagents
-		var/fillevel = gulp_size
-
-		if(!R.total_volume || !R)
-			user << "\red None of [src] left, oh no!"
-			return 0
-
-		if(M == user)
-			M << "\blue You swallow a gulp of [src]."
-			if(reagents.total_volume)
-				reagents.reaction(M, INGEST)
-				spawn(5)
-					reagents.trans_to(M, gulp_size)
-
-			playsound(M.loc,'sound/items/drink.ogg', rand(10,50), 1)
-			return 1
-		else if( istype(M, /mob/living/carbon/human) )
-
-			for(var/mob/O in viewers(world.view, user))
-				O.show_message("\red [user] attempts to feed [M] [src].", 1)
-			if(!do_mob(user, M)) return
-			for(var/mob/O in viewers(world.view, user))
-				O.show_message("\red [user] feeds [M] [src].", 1)
-
-			M.attack_log += text("\[[time_stamp()]\] <font color='orange'>Has been fed [src.name] by [user.name] ([user.ckey]) Reagents: [reagentlist(src)]</font>")
-			user.attack_log += text("\[[time_stamp()]\] <font color='red'>Fed [M.name] by [M.name] ([M.ckey]) Reagents: [reagentlist(src)]</font>")
-			msg_admin_attack("[key_name(user)] fed [key_name(M)] with [src.name] Reagents: [reagentlist(src)] (INTENT: [uppertext(user.a_intent)]) (<A HREF='?_src_=holder;adminplayerobservecoodjump=1;X=[user.x];Y=[user.y];Z=[user.z]'>JMP</a>)")
-
-			if(reagents.total_volume)
-				reagents.reaction(M, INGEST)
-				spawn(5)
-					reagents.trans_to(M, gulp_size)
-
-			if(isrobot(user)) //Cyborg modules that include drinks automatically refill themselves, but drain the borg's cell
-				var/mob/living/silicon/robot/bro = user
-				bro.cell.use(30)
-				var/refill = R.get_master_reagent_id()
-				spawn(600)
-					R.add_reagent(refill, fillevel)
-
-			playsound(M.loc,'sound/items/drink.ogg', rand(10,50), 1)
-			return 1
-
-		return 0
-
-
-	afterattack(obj/target, mob/user, proximity)
-		if(!proximity) return
-
-		if(istype(target, /obj/structure/reagent_dispensers)) //A dispenser. Transfer FROM it TO us.
-
-			if(!target.reagents.total_volume)
-				user << "\red [target] is empty."
-				return
-
-			if(reagents.total_volume >= reagents.maximum_volume)
-				user << "\red [src] is full."
-				return
-
-			var/trans = target.reagents.trans_to(src, target:amount_per_transfer_from_this)
-			user << "\blue You fill [src] with [trans] units of the contents of [target]."
-
-		else if(target.is_open_container()) //Something like a glass. Player probably wants to transfer TO it.
-			if(!reagents.total_volume)
-				user << "\red [src] is empty."
-				return
-
-			if(target.reagents.total_volume >= target.reagents.maximum_volume)
-				user << "\red [target] is full."
-				return
-
-
-
-			var/datum/reagent/refill
-			var/datum/reagent/refillName
-			if(isrobot(user))
-				refill = reagents.get_master_reagent_id()
-				refillName = reagents.get_master_reagent_name()
-
-			var/trans = src.reagents.trans_to(target, amount_per_transfer_from_this)
-			user << "\blue You transfer [trans] units of the solution to [target]."
-
-			if(isrobot(user)) //Cyborg modules that include drinks automatically refill themselves, but drain the borg's cell
-				var/mob/living/silicon/robot/bro = user
-				var/chargeAmount = max(30,4*trans)
-				bro.cell.use(chargeAmount)
-				user << "Now synthesizing [trans] units of [refillName]..."
-
-
-				spawn(300)
-					reagents.add_reagent(refill, trans)
-					user << "Cyborg [src] refilled."
-
-		return
-
-/*	examine()
-		set src in view()
-		..()
-		if (!(usr in range(0)) && usr!=src.loc) return
-		if(!reagents || reagents.total_volume==0)
-			usr << "\blue \The [src] is empty!"
-		else if (reagents.total_volume<=src.volume/4)
-			usr << "\blue \The [src] is almost empty!"
-		else if (reagents.total_volume<=src.volume*0.66)
-			usr << "\blue \The [src] is half full!"
-		else if (reagents.total_volume<=src.volume*0.90)
-			usr << "\blue \The [src] is almost full!"
-		else
-			usr << "\blue \The [src] is full!"*/
-
+	volume = 40 //just over one and a half cups
+	amount_per_transfer_from_this = 5
+	atom_flags = 0 //starts closed
+	matter = list(MATERIAL_ALUMINIUM = 30)
 
 //DRINKS
 
 /obj/item/weapon/reagent_containers/food/drinks/cans/cola
-	name = "Space Cola"
+	name = "\improper Space Cola"
 	desc = "Cola. in space."
 	icon_state = "cola"
-	New()
-		..()
-		reagents.add_reagent("cola", 30)
-		src.pixel_x = rand(-10.0, 10)
-		src.pixel_y = rand(-10.0, 10)
+	center_of_mass = "x=16;y=10"
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/cola/New()
+	..()
+	reagents.add_reagent(/datum/reagent/drink/space_cola, 30)
 
 /obj/item/weapon/reagent_containers/food/drinks/cans/waterbottle
-	name = "Bottled Water"
-	desc = "Introduced to the vending machines by Skrellian request, this water comes straight from the Martian poles."
+	name = "bottled water"
+	desc = "Pure drinking water, imported from the Martian poles."
 	icon_state = "waterbottle"
-	New()
-		..()
-		reagents.add_reagent("water", 30)
-		src.pixel_x = rand(-10.0, 10)
-		src.pixel_y = rand(-10.0, 10)
+	center_of_mass = "x=15;y=8"
+	matter = list(MATERIAL_PLASTIC = 40)
 
-/obj/item/weapon/reagent_containers/food/drinks/cans/beer
-	name = "Space Beer"
-	desc = "Contains only water, malt and hops."
-	icon_state = "beer"
-	New()
-		..()
-		reagents.add_reagent("beer", 30)
-		src.pixel_x = rand(-10.0, 10)
-		src.pixel_y = rand(-10.0, 10)
+/obj/item/weapon/reagent_containers/food/drinks/cans/waterbottle/New()
+	..()
+	reagents.add_reagent(/datum/reagent/water, 30)
 
-/obj/item/weapon/reagent_containers/food/drinks/cans/ale
-	name = "Magm-Ale"
-	desc = "A true dorf's drink of choice."
-	icon_state = "alebottle"
-	item_state = "beer"
-	New()
-		..()
-		reagents.add_reagent("ale", 30)
-		src.pixel_x = rand(-10.0, 10)
-		src.pixel_y = rand(-10.0, 10)
-
+/obj/item/weapon/reagent_containers/food/drinks/cans/waterbottle/open(mob/user)
+	playsound(loc,'sound/effects/bonebreak1.ogg', rand(10,50), 1)
+	to_chat(user, "<span class='notice'>You twist open \the [src], destroying the safety seal!</span>")
+	atom_flags |= ATOM_FLAG_OPEN_CONTAINER
 
 /obj/item/weapon/reagent_containers/food/drinks/cans/space_mountain_wind
-	name = "Space Mountain Wind"
+	name = "\improper Space Mountain Wind"
 	desc = "Blows right through you like a space wind."
 	icon_state = "space_mountain_wind"
-	New()
-		..()
-		reagents.add_reagent("spacemountainwind", 30)
-		src.pixel_x = rand(-10.0, 10)
-		src.pixel_y = rand(-10.0, 10)
+	center_of_mass = "x=16;y=10"
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/space_mountain_wind/New()
+	..()
+	reagents.add_reagent(/datum/reagent/drink/spacemountainwind, 30)
 
 /obj/item/weapon/reagent_containers/food/drinks/cans/thirteenloko
-	name = "Thirteen Loko"
+	name = "\improper Thirteen Loko"
 	desc = "The CMO has advised crew members that consumption of Thirteen Loko may result in seizures, blindness, drunkeness, or even death. Please Drink Responsibly."
 	icon_state = "thirteen_loko"
-	New()
-		..()
-		reagents.add_reagent("thirteenloko", 30)
-		src.pixel_x = rand(-10.0, 10)
-		src.pixel_y = rand(-10.0, 10)
+	center_of_mass = "x=16;y=8"
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/thirteenloko/New()
+	..()
+	reagents.add_reagent(/datum/reagent/ethanol/thirteenloko, 30)
 
 /obj/item/weapon/reagent_containers/food/drinks/cans/dr_gibb
-	name = "Dr. Gibb"
+	name = "\improper Dr. Gibb"
 	desc = "A delicious mixture of 42 different flavors."
 	icon_state = "dr_gibb"
-	New()
-		..()
-		reagents.add_reagent("dr_gibb", 30)
-		src.pixel_x = rand(-10.0, 10)
-		src.pixel_y = rand(-10.0, 10)
+	center_of_mass = "x=16;y=10"
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/dr_gibb/New()
+	..()
+	reagents.add_reagent(/datum/reagent/drink/dr_gibb, 30)
 
 /obj/item/weapon/reagent_containers/food/drinks/cans/starkist
-	name = "Star-kist"
+	name = "\improper Star-kist"
 	desc = "The taste of a star in liquid form. And, a bit of tuna...?"
 	icon_state = "starkist"
-	New()
-		..()
-		reagents.add_reagent("cola", 15)
-		reagents.add_reagent("orangejuice", 15)
-		src.pixel_x = rand(-10.0, 10)
-		src.pixel_y = rand(-10.0, 10)
+	center_of_mass = "x=16;y=10"
+/obj/item/weapon/reagent_containers/food/drinks/cans/starkist/New()
+	..()
+	reagents.add_reagent(/datum/reagent/drink/brownstar, 30)
 
 /obj/item/weapon/reagent_containers/food/drinks/cans/space_up
-	name = "Space-Up"
+	name = "\improper Space-Up"
 	desc = "Tastes like a hull breach in your mouth."
 	icon_state = "space-up"
-	New()
-		..()
-		reagents.add_reagent("space_up", 30)
-		src.pixel_x = rand(-10.0, 10)
-		src.pixel_y = rand(-10.0, 10)
+	center_of_mass = "x=16;y=10"
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/space_up/New()
+	..()
+	reagents.add_reagent(/datum/reagent/drink/space_up, 30)
 
 /obj/item/weapon/reagent_containers/food/drinks/cans/lemon_lime
-	name = "Lemon-Lime"
+	name = "\improper Lemon-Lime"
 	desc = "You wanted ORANGE. It gave you Lemon Lime."
 	icon_state = "lemon-lime"
-	New()
-		..()
-		reagents.add_reagent("lemon_lime", 30)
-		src.pixel_x = rand(-10.0, 10)
-		src.pixel_y = rand(-10.0, 10)
+	center_of_mass = "x=16;y=10"
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/lemon_lime/New()
+	..()
+	reagents.add_reagent(/datum/reagent/drink/lemon_lime, 30)
 
 /obj/item/weapon/reagent_containers/food/drinks/cans/iced_tea
-	name = "Vrisk Serket Iced Tea"
+	name = "\improper Vrisk Serket Iced Tea"
 	desc = "That sweet, refreshing southern earthy flavor. That's where it's from, right? South Earth?"
 	icon_state = "ice_tea_can"
-	New()
-		..()
-		reagents.add_reagent("icetea", 30)
-		src.pixel_x = rand(-10.0, 10)
-		src.pixel_y = rand(-10.0, 10)
+	center_of_mass = "x=16;y=10"
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/iced_tea/New()
+	..()
+	reagents.add_reagent(/datum/reagent/drink/tea/icetea, 30)
 
 /obj/item/weapon/reagent_containers/food/drinks/cans/grape_juice
-	name = "Grapel Juice"
+	name = "\improper Grapel Juice"
 	desc = "500 pages of rules of how to appropriately enter into a combat with this juice!"
 	icon_state = "purple_can"
-	New()
-		..()
-		reagents.add_reagent("grapejuice", 30)
-		src.pixel_x = rand(-10.0, 10)
-		src.pixel_y = rand(-10.0, 10)
+	center_of_mass = "x=16;y=10"
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/grape_juice/New()
+	..()
+	reagents.add_reagent(/datum/reagent/drink/juice/grape, 30)
 
 /obj/item/weapon/reagent_containers/food/drinks/cans/tonic
-	name = "T-Borg's Tonic Water"
+	name = "\improper T-Borg's Tonic Water"
 	desc = "Quinine tastes funny, but at least it'll keep that Space Malaria away."
 	icon_state = "tonic"
-	New()
-		..()
-		reagents.add_reagent("tonic", 50)
+	center_of_mass = "x=16;y=10"
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/tonic/New()
+	..()
+	reagents.add_reagent(/datum/reagent/drink/tonic, 30)
 
 /obj/item/weapon/reagent_containers/food/drinks/cans/sodawater
-	name = "Soda Water"
+	name = "soda water"
 	desc = "A can of soda water. Still water's more refreshing cousin."
 	icon_state = "sodawater"
-	New()
-		..()
-		reagents.add_reagent("sodawater", 50)
+	center_of_mass = "x=16;y=10"
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/sodawater/New()
+	..()
+	reagents.add_reagent(/datum/reagent/drink/sodawater, 30)
+
+//Items exclusive to the BODA machine on deck 4 and wherever else it pops up. First two are a bit jokey. Second two are genuine article.
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/syndicolax
+	name = "\improper Red Army Twist!"
+	desc = "A taste of what keeps our glorious nation running! Served as Space Commissariat Stahlin prefers it! Luke warm."
+	icon_state = "syndi_cola_x"
+	center_of_mass = "x=16;y=10"
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/syndicolax/New()
+	..()
+	reagents.add_reagent(/datum/reagent/drink/juice/potato, 30)
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/artbru
+	name = "\improper Arstotzka Bru"
+	desc = "Just what any bureaucrat needs to get through the day. Keep stamping those papers!"
+	icon_state = "art_bru"
+	center_of_mass = "x=16;y=10"
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/artbru/New()
+	..()
+	reagents.add_reagent(/datum/reagent/drink/juice/turnip, 30)
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/syndicola
+	name = "\improper TerraCola"
+	desc = "A can of the only soft drink state approved for the benefit of the people. Served at room temperature regardless of ambient temperatures thanks to innovative Terran insulation technology."
+	icon_state = "syndi_cola"
+	center_of_mass = "x=16;y=10"
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/syndicola/New()
+	..()
+	reagents.add_reagent(/datum/reagent/water, 25)
+	reagents.add_reagent(/datum/reagent/iron, 5)
+
+/obj/item/weapon/reagent_containers/food/drinks/glass2/square/boda
+	name = "boda"
+	desc = "A tall glass of refreshing Boda!"
+	center_of_mass = "x=16;y=10"
+
+/obj/item/weapon/reagent_containers/food/drinks/glass2/square/boda/New()
+	..()
+	reagents.add_reagent(/datum/reagent/drink/sodawater, 30)
+
+/obj/item/weapon/reagent_containers/food/drinks/glass2/square/bodaplus
+	name = "tri kopeiki sirop boda"
+	desc = "A tall glass of even more refreshing Boda! Now with Sok!"
+	center_of_mass = "x=16;y=10"
+
+/obj/item/weapon/reagent_containers/food/drinks/glass2/square/bodaplus/New()
+	..()
+	reagents.add_reagent(/datum/reagent/drink/sodawater, 15)
+	reagents.add_reagent(pick(list(
+				/datum/reagent/drink/kiraspecial,
+				/datum/reagent/drink/juice/grape,
+				/datum/reagent/drink/juice/orange,
+				/datum/reagent/drink/juice/lemon,
+				/datum/reagent/drink/juice/lime,
+				/datum/reagent/drink/juice/apple,
+				/datum/reagent/drink/juice/pear,
+				/datum/reagent/drink/juice/banana,
+				/datum/reagent/drink/juice/berry,
+				/datum/reagent/drink/juice/watermelon)), 15)
+
+//Canned alcohols.
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/speer
+	name = "\improper Space Beer"
+	desc = "Now in a can!"
+	icon_state = "beercan"
+	center_of_mass = "x=16;y=10"
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/speer/New()
+	..()
+	reagents.add_reagent(/datum/reagent/ethanol/beer/good, 30)
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/ale
+	name = "\improper Magm-Ale"
+	desc = "Now in a can!"
+	icon_state = "alecan"
+	center_of_mass = "x=16;y=10"
+
+/obj/item/weapon/reagent_containers/food/drinks/cans/ale/New()
+	..()
+	reagents.add_reagent(/datum/reagent/ethanol/ale, 30)

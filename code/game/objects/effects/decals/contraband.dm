@@ -12,117 +12,151 @@
 	name = "rolled-up poster"
 	desc = "The poster comes with its own automatic adhesive mechanism, for easy pinning to any vertical surface."
 	icon_state = "rolled_poster"
-	var/serial_number = 0
+	var/poster_type
 
+/obj/item/weapon/contraband/poster/New(var/maploading, var/given_poster_type)
+	if(given_poster_type && !ispath(given_poster_type, /decl/poster))
+		CRASH("Invalid poster type: [log_info_line(given_poster_type)]")
 
-/obj/item/weapon/contraband/poster/New(turf/loc, var/given_serial = 0)
-	if(given_serial == 0)
-		serial_number = rand(1, poster_designs.len)
-	else
-		serial_number = given_serial
+	poster_type = given_poster_type || poster_type
+	if(!poster_type)
+		poster_type = pick(subtypesof(/decl/poster))
+	..()
+
+/obj/item/weapon/contraband/poster/Initialize()
+	var/list/posters = subtypesof(/decl/poster)
+	var/serial_number = posters.Find(poster_type)
 	name += " - No. [serial_number]"
-	..(loc)
+
+	return ..()
+
+//Places the poster on a wall
+/obj/item/weapon/contraband/poster/afterattack(var/atom/A, var/mob/user, var/adjacent, var/clickparams)
+	if (!adjacent)
+		return
+
+	//must place on a wall and user must not be inside a closet/mecha/whatever
+	var/turf/W = A
+	if (!iswall(W) || !isturf(user.loc))
+		to_chat(user, "<span class='warning'>You can't place this here!</span>")
+		return
+
+	var/placement_dir = get_dir(user, W)
+	if (!(placement_dir in GLOB.cardinal))
+		to_chat(user, "<span class='warning'>You must stand directly in front of the wall you wish to place that on.</span>")
+		return
+
+	if (ArePostersOnWall(W))
+		to_chat(user, "<span class='notice'>There is already a poster there!</span>")
+		return
+
+	user.visible_message("<span class='notice'>\The [user] starts placing a poster on \the [W].</span>","<span class='notice'>You start placing the poster on \the [W].</span>")
+
+	var/obj/structure/sign/poster/P = new (user.loc, placement_dir, poster_type)
+	qdel(src)
+	flick("poster_being_set", P)
+	// Time to place is equal to the time needed to play the flick animation
+	if(do_after(user, 28, W) && iswall(W) && !ArePostersOnWall(W, P))
+		user.visible_message("<span class='notice'>\The [user] has placed a poster on \the [W].</span>","<span class='notice'>You have placed the poster on \the [W].</span>")
+	else
+		// We cannot rely on user being on the appropriate turf when placement fails
+		P.roll_and_drop(get_step(W, turn(placement_dir, 180)))
+
+/obj/item/weapon/contraband/poster/proc/ArePostersOnWall(var/turf/W, var/placed_poster)
+	//just check if there is a poster on or adjacent to the wall
+	if (locate(/obj/structure/sign/poster) in W)
+		return TRUE
+
+	//crude, but will cover most cases. We could do stuff like check pixel_x/y but it's not really worth it.
+	for (var/dir in GLOB.cardinal)
+		var/turf/T = get_step(W, dir)
+		var/poster = locate(/obj/structure/sign/poster) in T
+		if (poster && placed_poster != poster)
+			return TRUE
+
+	return FALSE
 
 //############################## THE ACTUAL DECALS ###########################
 
-obj/structure/sign/poster
+/obj/structure/sign/poster
 	name = "poster"
-	desc = "A large piece of space-resistant printed paper. "
+	desc = "A large piece of space-resistant printed paper."
 	icon = 'icons/obj/contraband.dmi'
 	anchored = 1
-	var/serial_number	//Will hold the value of src.loc if nobody initialises it
+	var/poster_type
 	var/ruined = 0
 
+/obj/structure/sign/poster/bay_9
+	poster_type = /decl/poster/bay_9
 
-obj/structure/sign/poster/New(var/serial)
+/obj/structure/sign/poster/bay_50
+	poster_type = /decl/poster/bay_50
 
-	serial_number = serial
+/obj/structure/sign/poster/New(var/newloc, var/placement_dir = null, var/give_poster_type = null)
+	..(newloc)
 
-	if(serial_number == loc)
-		serial_number = rand(1, poster_designs.len)	//This is for the mappers that want individual posters without having to use rolled posters.
+	if(!poster_type)
+		if(give_poster_type)
+			poster_type = give_poster_type
+		else
+			poster_type = pick(subtypesof(/decl/poster))
+	set_poster(poster_type)
 
-	var/designtype = poster_designs[serial_number]
-	var/datum/poster/design=new designtype
-	name += " - [design.name]"
-	desc += " [design.desc]"
-	icon_state = design.icon_state // poster[serial_number]
-	..()
+	switch (placement_dir)
+		if (NORTH)
+			pixel_x = 0
+			pixel_y = 32
+		if (SOUTH)
+			pixel_x = 0
+			pixel_y = -32
+		if (EAST)
+			pixel_x = 32
+			pixel_y = 0
+		if (WEST)
+			pixel_x = -32
+			pixel_y = 0
 
-obj/structure/sign/poster/attackby(obj/item/weapon/W as obj, mob/user as mob)
-	if(istype(W, /obj/item/weapon/wirecutters))
+/obj/structure/sign/poster/proc/set_poster(var/poster_type)
+	var/decl/poster/design = decls_repository.get_decl(poster_type)
+	SetName("[initial(name)] - [design.name]")
+	desc = "[initial(desc)] [design.desc]"
+	icon_state = design.icon_state
+
+/obj/structure/sign/poster/attackby(obj/item/weapon/W as obj, mob/user as mob)
+	if(isWirecutter(W))
 		playsound(loc, 'sound/items/Wirecutter.ogg', 100, 1)
 		if(ruined)
-			user << "<span class='notice'>You remove the remnants of the poster.</span>"
-			del(src)
+			to_chat(user, "<span class='notice'>You remove the remnants of the poster.</span>")
+			qdel(src)
 		else
-			user << "<span class='notice'>You carefully remove the poster from the wall.</span>"
+			to_chat(user, "<span class='notice'>You carefully remove the poster from the wall.</span>")
 			roll_and_drop(user.loc)
 		return
 
 
 /obj/structure/sign/poster/attack_hand(mob/user as mob)
+
 	if(ruined)
 		return
-	var/temp_loc = user.loc
-	switch(alert("Do I want to rip the poster from the wall?","You think...","Yes","No"))
-		if("Yes")
-			if(user.loc != temp_loc)
-				return
-			visible_message("<span class='warning'>[user] rips [src] in a single, decisive motion!</span>" )
-			playsound(src.loc, 'sound/items/poster_ripped.ogg', 100, 1)
-			ruined = 1
-			icon_state = "poster_ripped"
-			name = "ripped poster"
-			desc = "You can't make out anything from the poster's original print. It's ruined."
-			add_fingerprint(user)
-		if("No")
+
+	if(alert("Do I want to rip the poster from the wall?","You think...","Yes","No") == "Yes")
+
+		if(ruined || !user.Adjacent(src))
 			return
+
+		visible_message("<span class='warning'>\The [user] rips \the [src] in a single, decisive motion!</span>" )
+		playsound(src.loc, 'sound/items/poster_ripped.ogg', 100, 1)
+		ruined = 1
+		icon_state = "poster_ripped"
+		SetName("ripped poster")
+		desc = "You can't make out anything from the poster's original print. It's ruined."
+		add_fingerprint(user)
 
 /obj/structure/sign/poster/proc/roll_and_drop(turf/newloc)
-	var/obj/item/weapon/contraband/poster/P = new(src, serial_number)
-	P.loc = newloc
-	src.loc = P
-	del(src)
+	new/obj/item/weapon/contraband/poster(newloc, poster_type)
+	qdel(src)
 
-
-//separated to reduce code duplication. Moved here for ease of reference and to unclutter r_wall/attackby()
-/turf/simulated/wall/proc/place_poster(var/obj/item/weapon/contraband/poster/P, var/mob/user)
-
-	if(!istype(src,/turf/simulated/wall))
-		user << "\red You can't place this here!"
-		return
-
-	var/stuff_on_wall = 0
-	for(var/obj/O in contents) //Let's see if it already has a poster on it or too much stuff
-		if(istype(O,/obj/structure/sign/poster))
-			user << "<span class='notice'>The wall is far too cluttered to place a poster!</span>"
-			return
-		stuff_on_wall++
-		if(stuff_on_wall == 3)
-			user << "<span class='notice'>The wall is far too cluttered to place a poster!</span>"
-			return
-
-	user << "<span class='notice'>You start placing the poster on the wall...</span>" //Looks like it's uncluttered enough. Place the poster.
-
-	//declaring D because otherwise if P gets 'deconstructed' we lose our reference to P.resulting_poster
-	var/obj/structure/sign/poster/D = new(P.serial_number)
-
-	var/temp_loc = user.loc
-	flick("poster_being_set",D)
-	D.loc = src
-	del(P)	//delete it now to cut down on sanity checks afterwards. Agouri's code supports rerolling it anyway
-	playsound(D.loc, 'sound/items/poster_being_created.ogg', 100, 1)
-
-	sleep(17)
-	if(!D)	return
-
-	if(istype(src,/turf/simulated/wall) && user && user.loc == temp_loc)//Let's check if everything is still there
-		user << "<span class='notice'>You place the poster!</span>"
-	else
-		D.roll_and_drop(temp_loc)
-	return
-
-/datum/poster
+/decl/poster
 	// Name suffix. Poster - [name]
 	var/name=""
 	// Description suffix

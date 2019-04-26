@@ -25,7 +25,7 @@
 	if(!melee_can_hit || !istype(target, /atom)) return
 	if(istype(target, /mob/living))
 		var/mob/living/M = target
-		if(src.occupant.a_intent == "hurt")
+		if(src.occupant.a_intent == I_HURT)
 			playsound(src, 'sound/weapons/punch4.ogg', 50, 1)
 			if(damtype == "brute")
 				step_away(M,src,15)
@@ -37,46 +37,21 @@
 					melee_can_hit = 1
 				return
 			*/
-			if(istype(target, /mob/living/carbon/human))
-				var/mob/living/carbon/human/H = target
-	//			if (M.health <= 0) return
 
-				var/datum/organ/external/temp = H.get_organ(pick("chest", "chest", "chest", "head"))
-				if(temp)
-					var/update = 0
-					switch(damtype)
-						if("brute")
-							H.Paralyse(1)
-							update |= temp.take_damage(rand(force/2, force), 0)
-						if("fire")
-							update |= temp.take_damage(0, rand(force/2, force))
-						if("tox")
-							if(H.reagents)
-								if(H.reagents.get_reagent_amount("carpotoxin") + force < force*2)
-									H.reagents.add_reagent("carpotoxin", force)
-								if(H.reagents.get_reagent_amount("cryptobiolin") + force < force*2)
-									H.reagents.add_reagent("cryptobiolin", force)
-						else
-							return
-					if(update)	H.UpdateDamageIcon()
-				H.updatehealth()
+			var/hit_zone = ran_zone()
+			switch(damtype)
+				if("brute")
+					if(M.apply_damage(rand(force/2, force), BRUTE, hit_zone))
+						M.Weaken(1)
+				if("fire")
+					M.apply_damage(rand(force/2, force), BRUTE, hit_zone)
+				if("tox")
+					if(M.reagents)
+						if(M.reagents.get_reagent_amount(/datum/reagent/toxin/carpotoxin) + force < force*2)
+							M.reagents.add_reagent(/datum/reagent/toxin/carpotoxin, force)
+						if(M.reagents.get_reagent_amount(/datum/reagent/cryptobiolin) + force < force*2)
+							M.reagents.add_reagent(/datum/reagent/cryptobiolin, force)
 
-			else
-				switch(damtype)
-					if("brute")
-						M.Paralyse(1)
-						M.take_overall_damage(rand(force/2, force))
-					if("fire")
-						M.take_overall_damage(0, rand(force/2, force))
-					if("tox")
-						if(M.reagents)
-							if(M.reagents.get_reagent_amount("carpotoxin") + force < force*2)
-								M.reagents.add_reagent("carpotoxin", force)
-							if(M.reagents.get_reagent_amount("cryptobiolin") + force < force*2)
-								M.reagents.add_reagent("cryptobiolin", force)
-					else
-						return
-				M.updatehealth()
 			src.occupant_message("You hit [target].")
 			src.visible_message("<font color='red'><b>[src.name] hits [target].</b></font>")
 		else
@@ -99,7 +74,7 @@
 						target:attackby(src,src.occupant)
 					else if(prob(5))
 						target:dismantle_wall(1)
-						src.occupant_message("\blue You smash through the wall.")
+						src.occupant_message("<span class='notice'>You smash through the wall.</span>")
 						src.visible_message("<b>[src.name] smashes through the wall</b>")
 						playsound(src, 'sound/weapons/smash.ogg', 50, 1)
 					melee_can_hit = 0
@@ -244,15 +219,6 @@
 	else
 		return 0
 
-/obj/mecha/combat/mmi_moved_inside(var/obj/item/device/mmi/mmi_as_oc as obj,mob/user as mob)
-	if(..())
-		if(occupant.client)
-			occupant.client.mouse_pointer_icon = file("icons/mecha/mecha_mouse.dmi")
-		return 1
-	else
-		return 0
-
-
 /obj/mecha/combat/go_out()
 	if(src.occupant && src.occupant.client)
 		src.occupant.client.mouse_pointer_icon = initial(src.occupant.client.mouse_pointer_icon)
@@ -261,8 +227,8 @@
 
 /obj/mecha/combat/Topic(href,href_list)
 	..()
-	var/datum/topic_input/filter = new (href,href_list)
-	if(filter.get("close"))
+	var/datum/topic_input/F = new (href,href_list)
+	if(F.get("close"))
 		am = null
 		return
 	/*

@@ -1,156 +1,84 @@
-/obj/item/clothing/under/color/black
-	name = "black jumpsuit"
-	icon_state = "black"
-	item_state = "bl_suit"
-	item_color = "black"
-	flags = FPRINT | TABLEPASS
+// items not part of the colour changing system
 
-/obj/item/clothing/under/color/blackf
-	name = "feminine black jumpsuit"
-	desc = "It's very smart and in a ladies-size!"
-	icon_state = "black"
-	item_state = "bl_suit"
-	item_color = "blackf"
-
-/obj/item/clothing/under/color/blue
-	name = "blue jumpsuit"
-	icon_state = "blue"
-	item_state = "b_suit"
-	item_color = "blue"
-	flags = FPRINT | TABLEPASS
-
-/obj/item/clothing/under/color/green
-	name = "green jumpsuit"
-	icon_state = "green"
-	item_state = "g_suit"
-	item_color = "green"
-	flags = FPRINT | TABLEPASS
-
-/obj/item/clothing/under/color/grey
-	name = "grey jumpsuit"
-	icon_state = "grey"
-	item_state = "gy_suit"
-	item_color = "grey"
-	flags = FPRINT | TABLEPASS
+/obj/item/clothing/under/psyche
+	name = "psychedelic jumpsuit"
+	desc = "Groovy!"
+	icon_state = "psyche"
+	item_state = "psyche"
+	worn_state = "psyche"
 
 /obj/item/clothing/under/color/orange
 	name = "orange jumpsuit"
-	desc = "It's standardised Nanotrasen prisoner-wear. Its suit sensors are stuck in the \"Fully On\" position."
+	desc = "It's standardised prisoner-wear. Its suit sensor controls are permanently set to the \"Fully On\" position."
 	icon_state = "orange"
 	item_state = "o_suit"
-	item_color = "orange"
+	worn_state = "orange"
 	has_sensor = 2
 	sensor_mode = 3
-	flags = FPRINT | TABLEPASS
 
-/obj/item/clothing/under/color/pink
-	name = "pink jumpsuit"
-	icon_state = "pink"
-	item_state = "p_suit"
-	item_color = "pink"
-	flags = FPRINT | TABLEPASS
+/obj/item/clothing/under/color/blackjumpshorts
+	name = "black jumpsuit shorts"
+	desc = "The latest in space fashion, in a ladies' cut with shorts."
+	icon_state = "black"
+	item_state = "bl_suit"
+	worn_state = "blackshortsf"
 
-/obj/item/clothing/under/color/red
-	name = "red jumpsuit"
-	icon_state = "red"
-	item_state = "r_suit"
-	item_color = "red"
-	flags = FPRINT | TABLEPASS
+// coloured jumpsuits, male pattern
+
+/obj/item/clothing/under/color
+	name = "jumpsuit"
+	desc = "The latest in space fashion."
+	icon_state = "jumpsuit"
+	item_state = "jumpsuit"
+	worn_state = "jumpsuit"
+
+// legacy colours - these are used somewhere in the game, but aren't available in the loadout
 
 /obj/item/clothing/under/color/white
 	name = "white jumpsuit"
-	icon_state = "white"
-	item_state = "w_suit"
-	item_color = "white"
-	flags = FPRINT | TABLEPASS
+	color = "#ffffff"
+
+/obj/item/clothing/under/color/black
+	name = "black jumpsuit"
+	color = "#3d3d3d"
+
+/obj/item/clothing/under/color/grey
+	name = "grey jumpsuit"
+	color = "#c4c4c4"
+
+/obj/item/clothing/under/color/blue
+	name = "blue jumpsuit"
+	color = "#0066ff"
+
+/obj/item/clothing/under/color/pink
+	name = "pink jumpsuit"
+	color = "#df20a6"
+
+/obj/item/clothing/under/color/red
+	name = "red jumpsuit"
+	color = "#ee1511"
+
+/obj/item/clothing/under/color/green
+	name = "green jumpsuit"
+	color = "#42a345"
 
 /obj/item/clothing/under/color/yellow
 	name = "yellow jumpsuit"
-	icon_state = "yellow"
-	item_state = "y_suit"
-	item_color = "yellow"
-	flags = FPRINT | TABLEPASS
+	color = "#ffee00"
 
-/obj/item/clothing/under/psyche
-	name = "psychedelic"
-	desc = "Groovy!"
-	icon_state = "psyche"
-	item_color = "psyche"
+/obj/item/clothing/under/color/lightpurple
+	name = "light purple jumpsuit"
+	color = "#c600fc"
 
-/obj/item/clothing/under/lightblue
-	name = "lightblue"
-	desc = "lightblue"
-	icon_state = "lightblue"
-	item_color = "lightblue"
+/obj/item/clothing/under/color/brown
+	name = "brown jumpsuit"
+	color = "#c08720"
 
-/obj/item/clothing/under/aqua
-	name = "aqua"
-	desc = "aqua"
-	icon_state = "aqua"
-	item_color = "aqua"
-	flags = FPRINT | TABLEPASS
+// coloured jumpsuits, female pattern
 
-/obj/item/clothing/under/purple
-	name = "purple"
-	desc = "purple"
-	icon_state = "purple"
-	item_state = "p_suit"
-	item_color = "purple"
-
-/obj/item/clothing/under/lightpurple
-	name = "lightpurple"
-	desc = "lightpurple"
-	icon_state = "lightpurple"
-	item_color = "lightpurple"
-
-/obj/item/clothing/under/lightgreen
-	name = "lightgreen"
-	desc = "lightgreen"
-	icon_state = "lightgreen"
-	item_color = "lightgreen"
-
-/obj/item/clothing/under/lightblue
-	name = "lightblue"
-	desc = "lightblue"
-	icon_state = "lightblue"
-	item_color = "lightblue"
-
-/obj/item/clothing/under/lightbrown
-	name = "lightbrown"
-	desc = "lightbrown"
-	icon_state = "lightbrown"
-	item_color = "lightbrown"
-	flags = FPRINT | TABLEPASS
-
-/obj/item/clothing/under/brown
-	name = "brown"
-	desc = "brown"
-	icon_state = "brown"
-	item_color = "brown"
-	flags = FPRINT | TABLEPASS
-
-/obj/item/clothing/under/yellowgreen
-	name = "yellowgreen"
-	desc = "yellowgreen"
-	icon_state = "yellowgreen"
-	item_color = "yellowgreen"
-
-/obj/item/clothing/under/darkblue
-	name = "darkblue"
-	desc = "darkblue"
-	icon_state = "darkblue"
-	item_color = "darkblue"
-	flags = FPRINT | TABLEPASS
-
-/obj/item/clothing/under/lightred
-	name = "lightred"
-	desc = "lightred"
-	icon_state = "lightred"
-	item_color = "lightred"
-
-/obj/item/clothing/under/darkred
-	name = "darkred"
-	desc = "darkred"
-	icon_state = "darkred"
-	item_color = "darkred"
-	flags = FPRINT | TABLEPASS
+/obj/item/clothing/under/fcolor
+	name = "feminine jumpsuit"
+	desc = "The latest in space fashion, in a slimming ladies' cut."
+	icon_state = "jumpsuit"
+	item_state = "jumpsuit"
+	worn_state = "f_jumpsuit"

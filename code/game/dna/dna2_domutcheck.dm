@@ -5,8 +5,12 @@
 // flags: See below, bitfield.
 #define MUTCHK_FORCED        1
 /proc/domutcheck(var/mob/living/M, var/connected=null, var/flags=0)
+	if(ishuman(M))
+		var/mob/living/carbon/human/H = M
+		if(!H.should_have_organ(BP_HEART))
+			return
 	for(var/datum/dna/gene/gene in dna_genes)
-		if(!M)
+		if(!M || !M.dna)
 			return
 		if(!gene.block)
 			continue

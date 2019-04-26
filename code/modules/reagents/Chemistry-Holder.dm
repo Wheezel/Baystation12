@@ -1,561 +1,471 @@
-//This file was auto-corrected by findeclaration.exe on 25.5.2012 20:42:32
-
-var/const/TOUCH = 1
-var/const/INGEST = 2
-
-///////////////////////////////////////////////////////////////////////////////////
-
-datum
-	reagents
-		var/list/datum/reagent/reagent_list = new/list()
-		var/total_volume = 0
-		var/maximum_volume = 100
-		var/atom/my_atom = null
-
-		New(maximum=100)
-			maximum_volume = maximum
-
-			//I dislike having these here but map-objects are initialised before world/New() is called. >_>
-			if(!chemical_reagents_list)
-				//Chemical Reagents - Initialises all /datum/reagent into a list indexed by reagent id
-				var/paths = typesof(/datum/reagent) - /datum/reagent
-				chemical_reagents_list = list()
-				for(var/path in paths)
-					var/datum/reagent/D = new path()
-					chemical_reagents_list[D.id] = D
-			if(!chemical_reactions_list)
-				//Chemical Reactions - Initialises all /datum/chemical_reaction into a list
-				// It is filtered into multiple lists within a list.
-				// For example:
-				// chemical_reaction_list["plasma"] is a list of all reactions relating to plasma
-
-				var/paths = typesof(/datum/chemical_reaction) - /datum/chemical_reaction
-				chemical_reactions_list = list()
-
-				for(var/path in paths)
-
-					var/datum/chemical_reaction/D = new path()
-					var/list/reaction_ids = list()
-
-					if(D.required_reagents && D.required_reagents.len)
-						for(var/reaction in D.required_reagents)
-							reaction_ids += reaction
-
-					// Create filters based on each reagent id in the required reagents list
-					for(var/id in reaction_ids)
-						if(!chemical_reactions_list[id])
-							chemical_reactions_list[id] = list()
-						chemical_reactions_list[id] += D
-						break // Don't bother adding ourselves to other reagent ids, it is redundant.
-
-		proc
-
-			remove_any(var/amount=1)
-				var/total_transfered = 0
-				var/current_list_element = 1
-
-				current_list_element = rand(1,reagent_list.len)
-
-				while(total_transfered != amount)
-					if(total_transfered >= amount) break
-					if(total_volume <= 0 || !reagent_list.len) break
-
-					if(current_list_element > reagent_list.len) current_list_element = 1
-					var/datum/reagent/current_reagent = reagent_list[current_list_element]
-
-					src.remove_reagent(current_reagent.id, 1)
-
-					current_list_element++
-					total_transfered++
-					src.update_total()
-
-				handle_reactions()
-				return total_transfered
-
-			get_master_reagent_name()
-				var/the_name = null
-				var/the_volume = 0
-				for(var/datum/reagent/A in reagent_list)
-					if(A.volume > the_volume)
-						the_volume = A.volume
-						the_name = A.name
-
-				return the_name
-
-			get_master_reagent_id()
-				var/the_id = null
-				var/the_volume = 0
-				for(var/datum/reagent/A in reagent_list)
-					if(A.volume > the_volume)
-						the_volume = A.volume
-						the_id = A.id
-
-				return the_id
-
-			trans_to(var/obj/target, var/amount=1, var/multiplier=1, var/preserve_data=1)//if preserve_data=0, the reagents data will be lost. Usefull if you use data for some strange stuff and don't want it to be transferred.
-				if (!target )
-					return
-				if (!target.reagents || src.total_volume<=0)
-					return
-				var/datum/reagents/R = target.reagents
-				amount = min(min(amount, src.total_volume), R.maximum_volume-R.total_volume)
-				var/part = amount / src.total_volume
-				var/trans_data = null
-				for (var/datum/reagent/current_reagent in src.reagent_list)
-					if (!current_reagent)
-						continue
-					if (current_reagent.id == "blood" && ishuman(target))
-						var/mob/living/carbon/human/H = target
-						H.inject_blood(my_atom, amount)
-						continue
-					var/current_reagent_transfer = current_reagent.volume * part
-					if(preserve_data)
-						trans_data = current_reagent.data
-
-					R.add_reagent(current_reagent.id, (current_reagent_transfer * multiplier), trans_data, safety = 1)	//safety checks on these so all chemicals are transferred
-					src.remove_reagent(current_reagent.id, current_reagent_transfer, safety = 1)							// to the target container before handling reactions
-
-				src.update_total()
-				R.update_total()
-				R.handle_reactions()
-				src.handle_reactions()
-				return amount
-
-			copy_to(var/obj/target, var/amount=1, var/multiplier=1, var/preserve_data=1, var/safety = 0)
-				if(!target)
-					return
-				if(!target.reagents || src.total_volume<=0)
-					return
-				var/datum/reagents/R = target.reagents
-				amount = min(min(amount, src.total_volume), R.maximum_volume-R.total_volume)
-				var/part = amount / src.total_volume
-				var/trans_data = null
-				for (var/datum/reagent/current_reagent in src.reagent_list)
-					var/current_reagent_transfer = current_reagent.volume * part
-					if(preserve_data)
-						trans_data = current_reagent.data
-					R.add_reagent(current_reagent.id, (current_reagent_transfer * multiplier), trans_data, safety = 1)	//safety check so all chemicals are transferred before reacting
-
-				src.update_total()
-				R.update_total()
-				if(!safety)
-					R.handle_reactions()
-					src.handle_reactions()
-				return amount
-
-			trans_id_to(var/obj/target, var/reagent, var/amount=1, var/preserve_data=1)//Not sure why this proc didn't exist before. It does now! /N
-				if (!target)
-					return
-				if (!target.reagents || src.total_volume<=0 || !src.get_reagent_amount(reagent))
-					return
-
-				var/datum/reagents/R = target.reagents
-				if(src.get_reagent_amount(reagent)<amount)
-					amount = src.get_reagent_amount(reagent)
-				amount = min(amount, R.maximum_volume-R.total_volume)
-				var/trans_data = null
-				for (var/datum/reagent/current_reagent in src.reagent_list)
-					if(current_reagent.id == reagent)
-						if(preserve_data)
-							trans_data = current_reagent.data
-						R.add_reagent(current_reagent.id, amount, trans_data)
-						src.remove_reagent(current_reagent.id, amount, 1)
-						break
-
-				src.update_total()
-				R.update_total()
-				R.handle_reactions()
-				//src.handle_reactions() Don't need to handle reactions on the source since you're (presumably isolating and) transferring a specific reagent.
-				return amount
-
-/*
-				if (!target) return
-				var/total_transfered = 0
-				var/current_list_element = 1
-				var/datum/reagents/R = target.reagents
-				var/trans_data = null
-				//if(R.total_volume + amount > R.maximum_volume) return 0
-
-				current_list_element = rand(1,reagent_list.len) //Eh, bandaid fix.
-
-				while(total_transfered != amount)
-					if(total_transfered >= amount) break //Better safe than sorry.
-					if(total_volume <= 0 || !reagent_list.len) break
-					if(R.total_volume >= R.maximum_volume) break
-
-					if(current_list_element > reagent_list.len) current_list_element = 1
-					var/datum/reagent/current_reagent = reagent_list[current_list_element]
-					if(preserve_data)
-						trans_data = current_reagent.data
-					R.add_reagent(current_reagent.id, (1 * multiplier), trans_data)
-					src.remove_reagent(current_reagent.id, 1)
-
-					current_list_element++
-					total_transfered++
-					src.update_total()
-					R.update_total()
-				R.handle_reactions()
-				handle_reactions()
-
-				return total_transfered
-*/
-
-			metabolize(var/mob/M,var/alien)
-
-				for(var/A in reagent_list)
-					var/datum/reagent/R = A
-					if(M && R)
-						R.on_mob_life(M,alien)
-				update_total()
-
-			conditional_update_move(var/atom/A, var/Running = 0)
-				for(var/datum/reagent/R in reagent_list)
-					R.on_move (A, Running)
-				update_total()
-
-			conditional_update(var/atom/A, )
-				for(var/datum/reagent/R in reagent_list)
-					R.on_update (A)
-				update_total()
-
-			handle_reactions()
-				if(my_atom.flags & NOREACT) return //Yup, no reactions here. No siree.
-
-				var/reaction_occured = 0
-				do
-					reaction_occured = 0
-					for(var/datum/reagent/R in reagent_list) // Usually a small list
-						for(var/reaction in chemical_reactions_list[R.id]) // Was a big list but now it should be smaller since we filtered it with our reagent id
-
-							if(!reaction)
-								continue
-
-							var/datum/chemical_reaction/C = reaction
-
-							//check if this recipe needs to be heated to mix
-							if(C.requires_heating)
-								if(istype(my_atom.loc, /obj/machinery/bunsen_burner))
-									if(!my_atom.loc:heated)
-										continue
-								else
-									continue
-
-							var/total_required_reagents = C.required_reagents.len
-							var/total_matching_reagents = 0
-							var/total_required_catalysts = C.required_catalysts.len
-							var/total_matching_catalysts= 0
-							var/matching_container = 0
-							var/matching_other = 0
-							var/list/multipliers = new/list()
-
-							for(var/B in C.required_reagents)
-								if(!has_reagent(B, C.required_reagents[B]))	break
-								total_matching_reagents++
-								multipliers += round(get_reagent_amount(B) / C.required_reagents[B])
-							for(var/B in C.required_catalysts)
-								if(!has_reagent(B, C.required_catalysts[B]))	break
-								total_matching_catalysts++
-
-							if(!C.required_container)
-								matching_container = 1
-
-							else
-								if(my_atom.type == C.required_container)
-									matching_container = 1
-
-							if(!C.required_other)
-								matching_other = 1
-
-							else
-								/*if(istype(my_atom, /obj/item/slime_core))
-									var/obj/item/slime_core/M = my_atom
-
-									if(M.POWERFLAG == C.required_other && M.Uses > 0) // added a limit to slime cores -- Muskets requested this
-										matching_other = 1*/
-								if(istype(my_atom, /obj/item/slime_extract))
-									var/obj/item/slime_extract/M = my_atom
-
-									if(M.Uses > 0) // added a limit to slime cores -- Muskets requested this
-										matching_other = 1
-
-
-
-
-							if(total_matching_reagents == total_required_reagents && total_matching_catalysts == total_required_catalysts && matching_container && matching_other)
-								var/multiplier = min(multipliers)
-								var/preserved_data = null
-								for(var/B in C.required_reagents)
-									if(!preserved_data)
-										preserved_data = get_data(B)
-									remove_reagent(B, (multiplier * C.required_reagents[B]), safety = 1)
-
-								var/created_volume = C.result_amount*multiplier
-								if(C.result)
-									feedback_add_details("chemical_reaction","[C.result]|[C.result_amount*multiplier]")
-									multiplier = max(multiplier, 1) //this shouldnt happen ...
-									add_reagent(C.result, C.result_amount*multiplier)
-									set_data(C.result, preserved_data)
-
-									//add secondary products
-									for(var/S in C.secondary_results)
-										add_reagent(S, C.result_amount * C.secondary_results[S] * multiplier)
-
-								var/list/seen = viewers(4, get_turf(my_atom))
-								for(var/mob/M in seen)
-									M << "\blue \icon[my_atom] The solution begins to bubble."
-
-							/*	if(istype(my_atom, /obj/item/slime_core))
-									var/obj/item/slime_core/ME = my_atom
-									ME.Uses--
-									if(ME.Uses <= 0) // give the notification that the slime core is dead
-										for(var/mob/M in viewers(4, get_turf(my_atom)) )
-											M << "\blue \icon[my_atom] The innards begin to boil!"
-								*/
-								if(istype(my_atom, /obj/item/slime_extract))
-									var/obj/item/slime_extract/ME2 = my_atom
-									ME2.Uses--
-									if(ME2.Uses <= 0) // give the notification that the slime core is dead
-										for(var/mob/M in seen)
-											M << "\blue \icon[my_atom] The [my_atom]'s power is consumed in the reaction."
-											ME2.name = "used slime extract"
-											ME2.desc = "This extract has been used up."
-
-								playsound(get_turf(my_atom), 'sound/effects/bubbles.ogg', 80, 1)
-
-								C.on_reaction(src, created_volume)
-								reaction_occured = 1
-								break
-
-				while(reaction_occured)
-				update_total()
-				return 0
-
-			isolate_reagent(var/reagent)
-				for(var/A in reagent_list)
-					var/datum/reagent/R = A
-					if (R.id != reagent)
-						del_reagent(R.id)
-						update_total()
-
-			del_reagent(var/reagent)
-				for(var/A in reagent_list)
-					var/datum/reagent/R = A
-					if (R.id == reagent)
-						reagent_list -= A
-						del(A)
-						update_total()
-						my_atom.on_reagent_change()
-						return 0
-
-
-				return 1
-
+GLOBAL_DATUM_INIT(temp_reagents_holder, /obj, new)
+
+/datum/reagents
+	var/list/datum/reagent/reagent_list = list()
+	var/total_volume = 0
+	var/maximum_volume = 120
+	var/atom/my_atom = null
+
+/datum/reagents/New(var/maximum_volume = 120, var/atom/my_atom)
+	if(!istype(my_atom))
+		CRASH("Invalid reagents holder: [log_info_line(my_atom)]")
+	..()
+	src.my_atom = my_atom
+	src.maximum_volume = maximum_volume
+
+/datum/reagents/Destroy()
+	. = ..()
+	UNQUEUE_REACTIONS(src) // While marking for reactions should be avoided just before deleting if possible, the async nature means it might be impossible.
+	QDEL_NULL_LIST(reagent_list)
+	my_atom = null
+
+/* Internal procs */
+/datum/reagents/proc/get_free_space() // Returns free space.
+	return maximum_volume - total_volume
+
+/datum/reagents/proc/get_master_reagent() // Returns reference to the reagent with the biggest volume.
+	var/the_reagent = null
+	var/the_volume = 0
+
+	for(var/datum/reagent/A in reagent_list)
+		if(A.volume > the_volume)
+			the_volume = A.volume
+			the_reagent = A
+
+	return the_reagent
+
+/datum/reagents/proc/get_master_reagent_name() // Returns the name of the reagent with the biggest volume.
+	var/the_name = null
+	var/the_volume = 0
+	for(var/datum/reagent/A in reagent_list)
+		if(A.volume > the_volume)
+			the_volume = A.volume
+			the_name = A.name
+
+	return the_name
+
+/datum/reagents/proc/get_master_reagent_type() // Returns the type of the reagent with the biggest volume.
+	var/the_type = null
+	var/the_volume = 0
+	for(var/datum/reagent/A in reagent_list)
+		if(A.volume > the_volume)
+			the_volume = A.volume
+			the_type = A.type
+
+	return the_type
+
+/datum/reagents/proc/update_total() // Updates volume.
+	total_volume = 0
+	for(var/datum/reagent/R in reagent_list)
+		if(R.volume < MINIMUM_CHEMICAL_VOLUME)
+			del_reagent(R.type)
+		else
+			total_volume += R.volume
+	return
+
+/datum/reagents/proc/process_reactions()
+
+	if(!my_atom) // No reactions in temporary holders
+		return 0
+
+	if(!my_atom.loc) //No reactions inside GC'd containers
+		return 0
+
+	if(my_atom.atom_flags & ATOM_FLAG_NO_REACT) // No reactions here
+		return 0
+
+	var/reaction_occured = FALSE
+	var/list/eligible_reactions = list()
+
+	var/temperature = my_atom ? my_atom.temperature : T20C
+	for(var/thing in reagent_list)
+		var/datum/reagent/R = thing
+		if(R.custom_temperature_effects(temperature, src))
+			reaction_occured = TRUE
+			continue
+
+		// Check if the reagent is decaying or not.
+		var/list/replace_self_with
+		var/replace_message
+		var/replace_sound
+
+		if(LAZYLEN(R.chilling_products) && temperature <= R.chilling_point)
+			replace_self_with = R.chilling_products
+			replace_message =   "\The [lowertext(R.name)] [R.chilling_message]"
+			replace_sound =     R.chilling_sound
+
+		else if(LAZYLEN(R.heating_products) && temperature >= R.heating_point)
+			replace_self_with = R.heating_products
+			replace_message =   "\The [lowertext(R.name)] [R.heating_message]"
+			replace_sound =     R.heating_sound
+
+		// If it is, handle replacing it with the decay product.
+		if(replace_self_with)
+			var/replace_amount = R.volume / LAZYLEN(replace_self_with)
+			del_reagent(R.type)
+			for(var/product in replace_self_with)
+				add_reagent(product, replace_amount)
+			reaction_occured = TRUE
+
+			if(my_atom)
+				if(replace_message)
+					my_atom.visible_message("<span class='notice'>\icon[my_atom] [replace_message]</span>")
+				if(replace_sound)
+					playsound(my_atom, replace_sound, 80, 1)
+
+		else // Otherwise, collect all possible reactions.
+			eligible_reactions |= SSchemistry.chemical_reactions_by_id[R.type]
+
+	var/list/active_reactions = list()
+
+	for(var/datum/chemical_reaction/C in eligible_reactions)
+		if(C.can_happen(src))
+			active_reactions[C] = 1 // The number is going to be 1/(fraction of remaining reagents we are allowed to use), computed below
+			reaction_occured = 1
+
+	var/list/used_reagents = list()
+	// if two reactions share a reagent, each is allocated half of it, so we compute this here
+	for(var/datum/chemical_reaction/C in active_reactions)
+		var/list/adding = C.get_used_reagents()
+		for(var/R in adding)
+			LAZYADD(used_reagents[R], C)
+
+	for(var/R in used_reagents)
+		var/counter = length(used_reagents[R])
+		if(counter <= 1)
+			continue // Only used by one reaction, so nothing we need to do.
+		for(var/datum/chemical_reaction/C in used_reagents[R])
+			active_reactions[C] = max(counter, active_reactions[C])
+			counter-- //so the next reaction we execute uses more of the remaining reagents
+			// Note: this is not guaranteed to maximize the size of the reactions we do (if one reaction is limited by reagent A, we may be over-allocating reagent B to it)
+			// However, we are guaranteed to fully use up the most profligate reagent if possible.
+			// Further reactions may occur on the next tick, when this runs again.
+
+	for(var/thing in active_reactions)
+		var/datum/chemical_reaction/C = thing
+		C.process(src, active_reactions[C])
+
+	for(var/thing in active_reactions)
+		var/datum/chemical_reaction/C = thing
+		C.post_reaction(src)
+
+	update_total()
+
+	if(reaction_occured)
+		HANDLE_REACTIONS(src) // Check again in case the new reagents can react again
+
+	return reaction_occured
+
+/* Holder-to-chemical */
+
+/datum/reagents/proc/add_reagent(var/reagent_type, var/amount, var/data = null, var/safety = 0)
+	if(!isnum(amount) || amount <= 0)
+		return 0
+
+	update_total()
+	amount = min(amount, get_free_space())
+
+	for(var/datum/reagent/current in reagent_list)
+		if(current.type == reagent_type)
+			current.volume += amount
+			if(!isnull(data)) // For all we know, it could be zero or empty string and meaningful
+				current.mix_data(data, amount)
 			update_total()
-				total_volume = 0
-				for(var/datum/reagent/R in reagent_list)
-					if(R.volume < 0.1)
-						del_reagent(R.id)
-					else
-						total_volume += R.volume
+			if(!safety)
+				HANDLE_REACTIONS(src)
+			if(my_atom)
+				my_atom.on_reagent_change()
+			return 1
 
-				return 0
+	if(ispath(reagent_type, /datum/reagent))
+		var/datum/reagent/R = new reagent_type(src)
+		reagent_list += R
+		R.volume = amount
+		R.initialize_data(data)
+		update_total()
+		if(!safety)
+			HANDLE_REACTIONS(src)
+		if(my_atom)
+			my_atom.on_reagent_change()
+		return 1
+	else
+		warning("[log_info_line(my_atom)] attempted to add a reagent of type '[reagent_type]' which doesn't exist. ([usr])")
+	return 0
 
-			clear_reagents()
-				for(var/datum/reagent/R in reagent_list)
-					del_reagent(R.id)
-				return 0
+/datum/reagents/proc/remove_reagent(var/reagent_type, var/amount, var/safety = 0)
+	if(!isnum(amount))
+		return 0
+	for(var/datum/reagent/current in reagent_list)
+		if(current.type == reagent_type)
+			current.volume -= amount // It can go negative, but it doesn't matter
+			update_total() // Because this proc will delete it then
+			if(!safety)
+				HANDLE_REACTIONS(src)
+			if(my_atom)
+				my_atom.on_reagent_change()
+			return 1
+	return 0
 
-			reaction(var/atom/A, var/method=TOUCH, var/volume_modifier=0)
+/datum/reagents/proc/del_reagent(var/reagent_type)
+	for(var/datum/reagent/current in reagent_list)
+		if (current.type == reagent_type)
+			reagent_list -= current
+			qdel(current)
+			update_total()
+			if(my_atom)
+				my_atom.on_reagent_change()
+			return 0
 
-				switch(method)
-					if(TOUCH)
-						for(var/datum/reagent/R in reagent_list)
-							if(ismob(A))
-								spawn(0)
-									if(!R) return
-									else R.reaction_mob(A, TOUCH, R.volume+volume_modifier)
-							if(isturf(A))
-								spawn(0)
-									if(!R) return
-									else R.reaction_turf(A, R.volume+volume_modifier)
-							if(isobj(A))
-								spawn(0)
-									if(!R) return
-									else R.reaction_obj(A, R.volume+volume_modifier)
-					if(INGEST)
-						for(var/datum/reagent/R in reagent_list)
-							if(ismob(A) && R)
-								spawn(0)
-									if(!R) return
-									else R.reaction_mob(A, INGEST, R.volume+volume_modifier)
-							if(isturf(A) && R)
-								spawn(0)
-									if(!R) return
-									else R.reaction_turf(A, R.volume+volume_modifier)
-							if(isobj(A) && R)
-								spawn(0)
-									if(!R) return
-									else R.reaction_obj(A, R.volume+volume_modifier)
-				return
-
-			add_reagent(var/reagent, var/amount, var/list/data=null, var/safety = 0)
-				if(!isnum(amount)) return 1
-				update_total()
-				if(total_volume + amount > maximum_volume) amount = (maximum_volume - total_volume) //Doesnt fit in. Make it disappear. Shouldnt happen. Will happen.
-
-				for(var/A in reagent_list)
-
-					var/datum/reagent/R = A
-					if (R.id == reagent)
-						R.volume += amount
-						update_total()
-						my_atom.on_reagent_change()
-
-						// mix dem viruses
-						if(R.id == "blood" && reagent == "blood")
-							if(R.data && data)
-
-								if(R.data["viruses"] || data["viruses"])
-
-									var/list/mix1 = R.data["viruses"]
-									var/list/mix2 = data["viruses"]
-
-									// Stop issues with the list changing during mixing.
-									var/list/to_mix = list()
-
-									for(var/datum/disease/advance/AD in mix1)
-										to_mix += AD
-									for(var/datum/disease/advance/AD in mix2)
-										to_mix += AD
-
-									var/datum/disease/advance/AD = Advance_Mix(to_mix)
-									if(AD)
-										var/list/preserve = list(AD)
-										for(var/D in R.data["viruses"])
-											if(!istype(D, /datum/disease/advance))
-												preserve += D
-										R.data["viruses"] = preserve
-
-						if(!safety)
-							handle_reactions()
-						return 0
-
-				var/datum/reagent/D = chemical_reagents_list[reagent]
-				if(D)
-
-					var/datum/reagent/R = new D.type()
-					reagent_list += R
-					R.holder = src
-					R.volume = amount
-					SetViruses(R, data) // Includes setting data
-
-					//debug
-					//world << "Adding data"
-					//for(var/D in R.data)
-					//	world << "Container data: [D] = [R.data[D]]"
-					//debug
-					update_total()
-					my_atom.on_reagent_change()
-					if(!safety)
-						handle_reactions()
-					return 0
-				else
-					warning("[my_atom] attempted to add a reagent called '[reagent]' which doesn't exist. ([usr])")
-
-				if(!safety)
-					handle_reactions()
-
+/datum/reagents/proc/has_reagent(var/reagent_type, var/amount = null)
+	for(var/datum/reagent/current in reagent_list)
+		if(current.type == reagent_type)
+			if((isnull(amount) && current.volume > 0) || current.volume >= amount)
 				return 1
+			else
+				return 0
+	return 0
 
-			remove_reagent(var/reagent, var/amount, var/safety = 0)//Added a safety check for the trans_id_to
-				if(!isnum(amount)) return 1
-
-				for(var/A in reagent_list)
-					var/datum/reagent/R = A
-					if (R.id == reagent)
-						R.volume -= amount
-						update_total()
-						if(!safety)//So it does not handle reactions when it need not to
-							handle_reactions()
-						my_atom.on_reagent_change()
-						return 0
-
+/datum/reagents/proc/has_any_reagent(var/list/check_reagents)
+	for(var/datum/reagent/current in reagent_list)
+		if(current.type in check_reagents)
+			if(current.volume >= check_reagents[current.type])
 				return 1
-
-			has_reagent(var/reagent, var/amount = -1)
-
-				for(var/A in reagent_list)
-					var/datum/reagent/R = A
-					if (R.id == reagent)
-						if(!amount) return R
-						else
-							if(R.volume >= amount) return R
-							else return 0
-
+			else
 				return 0
+	return 0
 
-			get_reagent_amount(var/reagent)
-				for(var/A in reagent_list)
-					var/datum/reagent/R = A
-					if (R.id == reagent)
-						return R.volume
+/datum/reagents/proc/has_all_reagents(var/list/check_reagents)
+	//this only works if check_reagents has no duplicate entries... hopefully okay since it expects an associative list
+	var/missing = check_reagents.len
+	for(var/datum/reagent/current in reagent_list)
+		if(current.type in check_reagents)
+			if(current.volume >= check_reagents[current.type])
+				missing--
+	return !missing
 
-				return 0
+/datum/reagents/proc/clear_reagents()
+	for(var/datum/reagent/current in reagent_list)
+		del_reagent(current.type)
+	return
 
-			get_reagents()
-				var/res = ""
-				for(var/datum/reagent/A in reagent_list)
-					if (res != "") res += ","
-					res += A.name
+/datum/reagents/proc/get_reagent_amount(var/reagent_type)
+	for(var/datum/reagent/current in reagent_list)
+		if(current.type == reagent_type)
+			return current.volume
+	return 0
 
-				return res
+/datum/reagents/proc/get_data(var/reagent_type)
+	for(var/datum/reagent/current in reagent_list)
+		if(current.type == reagent_type)
+			return current.get_data()
+	return 0
 
-			remove_all_type(var/reagent_type, var/amount, var/strict = 0, var/safety = 1) // Removes all reagent of X type. @strict set to 1 determines whether the childs of the type are included.
-				if(!isnum(amount)) return 1
+/datum/reagents/proc/get_overdose(var/datum/reagent/current)
+	if(current)
+		return initial(current.overdose)
+	return 0
 
-				var/has_removed_reagent = 0
+/datum/reagents/proc/get_reagents(scannable_only = 0, precision)
+	. = list()
+	for(var/datum/reagent/current in reagent_list)
+		if(scannable_only && !current.scannable)
+			continue
+		var/volume = current.volume
+		if(precision)
+			volume = round(volume, precision)
+		if(volume)
+			. += "[current.name] ([volume])"
+	return english_list(., "EMPTY", "", ", ", ", ")
 
-				for(var/datum/reagent/R in reagent_list)
-					var/matches = 0
-					// Switch between how we check the reagent type
-					if(strict)
-						if(R.type == reagent_type)
-							matches = 1
-					else
-						if(istype(R, reagent_type))
-							matches = 1
-					// We found a match, proceed to remove the reagent.	Keep looping, we might find other reagents of the same type.
-					if(matches)
-						// Have our other proc handle removement
-						has_removed_reagent = remove_reagent(R.id, amount, safety)
+/* Holder-to-holder and similar procs */
 
-				return has_removed_reagent
+/datum/reagents/proc/remove_any(var/amount = 1) // Removes up to [amount] of reagents from [src]. Returns actual amount removed.
+	amount = min(amount, total_volume)
 
-			//two helper functions to preserve data across reactions (needed for xenoarch)
-			get_data(var/reagent_id)
-				for(var/datum/reagent/D in reagent_list)
-					if(D.id == reagent_id)
-						//world << "proffering a data-carrying reagent ([reagent_id])"
-						return D.data
+	if(!amount)
+		return
 
-			set_data(var/reagent_id, var/new_data)
-				for(var/datum/reagent/D in reagent_list)
-					if(D.id == reagent_id)
-						//world << "reagent data set ([reagent_id])"
-						D.data = new_data
+	var/part = amount / total_volume
 
-			delete()
-				for(var/datum/reagent/R in reagent_list)
-					R.holder = null
-				if(my_atom)
-					my_atom.reagents = null
+	for(var/datum/reagent/current in reagent_list)
+		var/amount_to_remove = current.volume * part
+		remove_reagent(current.type, amount_to_remove, 1)
 
+	update_total()
+	HANDLE_REACTIONS(src)
+	return amount
 
-///////////////////////////////////////////////////////////////////////////////////
+// Transfers [amount] reagents from [src] to [target], multiplying them by [multiplier].
+// Returns actual amount removed from [src] (not amount transferred to [target]).
+// Use safety = 1 for temporary targets to avoid queuing them up for processing.
+/datum/reagents/proc/trans_to_holder(var/datum/reagents/target, var/amount = 1, var/multiplier = 1, var/copy = 0, var/safety = 0)
+	if(!target || !istype(target))
+		return
 
+	amount = max(0, min(amount, total_volume, target.get_free_space() / multiplier))
 
-// Convenience proc to create a reagents holder for an atom
-// Max vol is maximum volume of holder
-atom/proc/create_reagents(var/max_vol)
-	reagents = new/datum/reagents(max_vol)
-	reagents.my_atom = src
+	if(!amount)
+		return
+
+	var/part = amount / total_volume
+
+	for(var/datum/reagent/current in reagent_list)
+		var/amount_to_transfer = current.volume * part
+		target.add_reagent(current.type, amount_to_transfer * multiplier, current.get_data(), safety = 1) // We don't react until everything is in place
+		if(!copy)
+			remove_reagent(current.type, amount_to_transfer, 1)
+
+	if(!copy)
+		HANDLE_REACTIONS(src)
+	if(!safety)
+		HANDLE_REACTIONS(target)
+	return amount
+
+/* Holder-to-atom and similar procs */
+
+//The general proc for applying reagents to things. This proc assumes the reagents are being applied externally,
+//not directly injected into the contents. It first calls touch, then the appropriate trans_to_*() or splash_mob().
+//If for some reason touch effects are bypassed (e.g. injecting stuff directly into a reagent container or person),
+//call the appropriate trans_to_*() proc.
+/datum/reagents/proc/trans_to(var/atom/target, var/amount = 1, var/multiplier = 1, var/copy = 0)
+	touch(target) //First, handle mere touch effects
+
+	if(ismob(target))
+		return splash_mob(target, amount, copy)
+	if(isturf(target))
+		return trans_to_turf(target, amount, multiplier, copy)
+	if(isobj(target) && target.is_open_container())
+		return trans_to_obj(target, amount, multiplier, copy)
+	return 0
+
+//Splashing reagents is messier than trans_to, the target's loc gets some of the reagents as well.
+/datum/reagents/proc/splash(var/atom/target, var/amount = 1, var/multiplier = 1, var/copy = 0, var/min_spill=0, var/max_spill=60)
+	var/spill = 0
+	if(!isturf(target) && target.loc)
+		spill = amount*(rand(min_spill, max_spill)/100)
+		amount -= spill
+	if(spill)
+		splash(target.loc, spill, multiplier, copy, min_spill, max_spill)
+
+	trans_to(target, amount, multiplier, copy)
+
+/datum/reagents/proc/trans_type_to(var/atom/target, var/type, var/amount = 1, var/multiplier = 1)
+	if (!target || !target.reagents || !target.simulated)
+		return
+
+	amount = min(amount, get_reagent_amount(type))
+
+	if(!amount)
+		return
+
+	var/datum/reagents/F = new /datum/reagents(amount, GLOB.temp_reagents_holder)
+	var/tmpdata = get_data(type)
+	F.add_reagent(type, amount, tmpdata)
+	remove_reagent(type, amount)
+
+	. = F.trans_to(target, amount, multiplier) // Let this proc check the atom's type
+
+	qdel(F)
+
+// When applying reagents to an atom externally, touch() is called to trigger any on-touch effects of the reagent.
+// This does not handle transferring reagents to things.
+// For example, splashing someone with water will get them wet and extinguish them if they are on fire,
+// even if they are wearing an impermeable suit that prevents the reagents from contacting the skin.
+/datum/reagents/proc/touch(var/atom/target)
+	if(ismob(target))
+		touch_mob(target)
+	if(isturf(target))
+		touch_turf(target)
+	if(isobj(target))
+		touch_obj(target)
+	return
+
+/datum/reagents/proc/touch_mob(var/mob/target)
+	if(!target || !istype(target) || !target.simulated)
+		return
+
+	for(var/datum/reagent/current in reagent_list)
+		current.touch_mob(target, current.volume)
+
+	update_total()
+
+/datum/reagents/proc/touch_turf(var/turf/target)
+	if(!target || !istype(target) || !target.simulated)
+		return
+
+	for(var/datum/reagent/current in reagent_list)
+		current.touch_turf(target, current.volume)
+
+	update_total()
+
+/datum/reagents/proc/touch_obj(var/obj/target)
+	if(!target || !istype(target) || !target.simulated)
+		return
+
+	for(var/datum/reagent/current in reagent_list)
+		current.touch_obj(target, current.volume)
+
+	update_total()
+
+// Attempts to place a reagent on the mob's skin.
+// Reagents are not guaranteed to transfer to the target.
+// Do not call this directly, call trans_to() instead.
+/datum/reagents/proc/splash_mob(var/mob/target, var/amount = 1, var/copy = 0)
+	var/perm = 1
+	if(isliving(target)) //will we ever even need to tranfer reagents to non-living mobs?
+		var/mob/living/L = target
+		perm = L.reagent_permeability()
+	return trans_to_mob(target, amount * perm, CHEM_TOUCH, 1, copy)
+
+/datum/reagents/proc/trans_to_mob(var/mob/target, var/amount = 1, var/type = CHEM_BLOOD, var/multiplier = 1, var/copy = 0) // Transfer after checking into which holder...
+	if(!target || !istype(target) || !target.simulated)
+		return
+	if(iscarbon(target))
+		var/mob/living/carbon/C = target
+		if(type == CHEM_BLOOD)
+			var/datum/reagents/R = C.reagents
+			return trans_to_holder(R, amount, multiplier, copy)
+		if(type == CHEM_INGEST)
+			var/datum/reagents/R = C.get_ingested_reagents()
+			return C.ingest(src, R, amount, multiplier, copy) //perhaps this is a bit of a hack, but currently there's no common proc for eating reagents
+		if(type == CHEM_TOUCH)
+			var/datum/reagents/R = C.touching
+			return trans_to_holder(R, amount, multiplier, copy)
+	else
+		var/datum/reagents/R = new /datum/reagents(amount, GLOB.temp_reagents_holder)
+		. = trans_to_holder(R, amount, multiplier, copy, 1)
+		R.touch_mob(target)
+		qdel(R)
+
+/datum/reagents/proc/trans_to_turf(var/turf/target, var/amount = 1, var/multiplier = 1, var/copy = 0) // Turfs don't have any reagents (at least, for now). Just touch it.
+	if(!target || !target.simulated)
+		return
+
+	var/datum/reagents/R = new /datum/reagents(amount * multiplier, GLOB.temp_reagents_holder)
+	. = trans_to_holder(R, amount, multiplier, copy, 1)
+	R.touch_turf(target)
+	qdel(R)
+	return
+
+/datum/reagents/proc/trans_to_obj(var/obj/target, var/amount = 1, var/multiplier = 1, var/copy = 0) // Objects may or may not; if they do, it's probably a beaker or something and we need to transfer properly; otherwise, just touch.
+	if(!target || !target.simulated)
+		return
+
+	if(!target.reagents)
+		var/datum/reagents/R = new /datum/reagents(amount * multiplier, GLOB.temp_reagents_holder)
+		. = trans_to_holder(R, amount, multiplier, copy, 1)
+		R.touch_obj(target)
+		qdel(R)
+		return
+
+	return trans_to_holder(target.reagents, amount, multiplier, copy)
+
+/* Atom reagent creation - use it all the time */
+
+/atom/proc/create_reagents(var/max_vol)
+	if(reagents)
+		log_debug("Attempted to create a new reagents holder when already referencing one: [log_info_line(src)]")
+		reagents.maximum_volume = max(reagents.maximum_volume, max_vol)
+	else
+		reagents = new/datum/reagents(max_vol, src)
+	return reagents

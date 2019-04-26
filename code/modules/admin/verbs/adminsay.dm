@@ -4,34 +4,36 @@
 	set hidden = 1
 	if(!check_rights(R_ADMIN))	return
 
-	msg = copytext(sanitize(msg), 1, MAX_MESSAGE_LEN)
+	msg = sanitize(msg)
 	if(!msg)	return
 
-	log_admin("[key_name(src)] : [msg]")
+	log_admin("ADMIN: [key_name(src)] : [msg]")
 
 	if(check_rights(R_ADMIN,0))
-		msg = "<span class='adminsay'><span class='prefix'>ADMIN:</span> <EM>[key_name(usr, 1)]</EM> (<a href='?_src_=holder;adminplayerobservejump=\ref[mob]'>JMP</A>): <span class='message'>[msg]</span></span>"
-		for(var/client/C in admins)
+		for(var/client/C in GLOB.admins)
 			if(R_ADMIN & C.holder.rights)
-				C << msg
+				to_chat(C, "<span class='admin_channel'>" + create_text_tag("admin", "ADMIN:", C) + " <span class='name'>[key_name(usr, 1)]</span>([admin_jump_link(mob, src)]): <span class='message'>[msg]</span></span>")
 
-	feedback_add_details("admin_verb","M") //If you are copy-pasting this, ensure the 2nd parameter is unique to the new proc!
+	SSstatistics.add_field_details("admin_verb","M") //If you are copy-pasting this, ensure the 2nd parameter is unique to the new proc!
 
 /client/proc/cmd_mod_say(msg as text)
 	set category = "Special Verbs"
 	set name = "Msay"
 	set hidden = 1
 
-	if(!check_rights(R_ADMIN|R_MOD))	return
+	if(!check_rights(R_ADMIN|R_MOD))
+		return
 
-	msg = copytext(sanitize(msg), 1, MAX_MESSAGE_LEN)
+	msg = sanitize(msg)
 	log_admin("MOD: [key_name(src)] : [msg]")
 
 	if (!msg)
 		return
-	var/color = "mod"
-	if (check_rights(R_ADMIN,0))
-		color = "adminmod"
-	for(var/client/C in admins)
-		if((R_ADMIN|R_MOD) & C.holder.rights)
-			C << "<span class='[color]'><span class='prefix'>MOD:</span> <EM>[key_name(src,1)]</EM> (<A HREF='?src=\ref[C.holder];adminplayerobservejump=\ref[mob]'>JMP</A>): <span class='message'>[msg]</span></span>"
+
+	var/sender_name = key_name(usr, 1)
+	if(check_rights(R_ADMIN, 0))
+		sender_name = "<span class='admin'>[sender_name]</span>"
+	for(var/client/C in GLOB.admins)
+		to_chat(C, "<span class='mod_channel'>" + create_text_tag("mod", "MOD:", C) + " <span class='name'>[sender_name]</span>([admin_jump_link(mob, C.holder)]): <span class='message'>[msg]</span></span>")
+
+	SSstatistics.add_field_details("admin_verb","MS") //If you are copy-pasting this, ensure the 2nd parameter is unique to the new proc!

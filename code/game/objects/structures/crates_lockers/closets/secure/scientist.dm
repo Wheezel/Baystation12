@@ -1,53 +1,72 @@
 /obj/structure/closet/secure_closet/scientist
-	name = "Scientist's Locker"
-	req_access = list(access_tox_storage)
-	icon_state = "secureres1"
-	icon_closed = "secureres"
-	icon_locked = "secureres1"
-	icon_opened = "secureresopen"
-	icon_broken = "secureresbroken"
-	icon_off = "secureresoff"
+	name = "scientist's locker"
+	req_access = list(list(access_tox,access_tox_storage))
+	closet_appearance = /decl/closet_appearance/secure_closet/expedition/science
 
-	New()
-		..()
-		sleep(2)
-		new /obj/item/clothing/under/rank/scientist(src)
-		//new /obj/item/clothing/suit/labcoat/science(src)
-		new /obj/item/clothing/suit/storage/labcoat(src)
-		new /obj/item/clothing/shoes/white(src)
-//		new /obj/item/weapon/cartridge/signal/toxins(src)
-		new /obj/item/device/radio/headset/headset_sci(src)
-		new /obj/item/weapon/tank/air(src)
-		new /obj/item/clothing/mask/gas(src)
-		return
+/obj/structure/closet/secure_closet/scientist/WillContain()
+	return list(
+		new /datum/atom_creator/weighted(list(/obj/item/weapon/storage/backpack/messenger/tox, /obj/item/weapon/storage/backpack/satchel/tox)),
+		/obj/item/clothing/under/rank/scientist,
+		/obj/item/clothing/suit/storage/toggle/labcoat,
+		/obj/item/clothing/shoes/white,
+		/obj/item/device/radio/headset/headset_sci,
+		/obj/item/clothing/mask/gas,
+		/obj/item/weapon/material/clipboard
+	)
 
+/obj/structure/closet/secure_closet/xenobio
+	name = "xenobiologist's locker"
+	req_access = list(access_xenobiology)
+	closet_appearance = /decl/closet_appearance/secure_closet/expedition/science
 
+/obj/structure/closet/secure_closet/xenobio/WillContain()
+	return list(
+		new /datum/atom_creator/weighted(list(/obj/item/weapon/storage/backpack/messenger/tox, /obj/item/weapon/storage/backpack/satchel/tox)),
+		/obj/item/clothing/under/rank/scientist,
+		/obj/item/clothing/suit/storage/toggle/labcoat,
+		/obj/item/clothing/shoes/white,
+		/obj/item/device/radio/headset/headset_sci,
+		/obj/item/clothing/mask/gas,
+		/obj/item/clothing/gloves/latex,
+		/obj/item/weapon/material/clipboard,
+		/obj/item/weapon/storage/belt/general
+	)
 
 /obj/structure/closet/secure_closet/RD
-	name = "Research Director's Locker"
+	name = "chief science officer's locker"
 	req_access = list(access_rd)
-	icon_state = "rdsecure1"
-	icon_closed = "rdsecure"
-	icon_locked = "rdsecure1"
-	icon_opened = "rdsecureopen"
-	icon_broken = "rdsecurebroken"
-	icon_off = "rdsecureoff"
+	closet_appearance = /decl/closet_appearance/secure_closet/rd
 
-	New()
-		..()
-		sleep(2)
-		new /obj/item/clothing/suit/bio_suit/scientist(src)
-		new /obj/item/clothing/head/bio_hood/scientist(src)
-		new /obj/item/clothing/under/rank/research_director(src)
-		new /obj/item/clothing/under/rank/research_director/rdalt(src)
-		new /obj/item/clothing/under/rank/research_director/dress_rd(src)
-		new /obj/item/clothing/suit/storage/labcoat(src)
-		new /obj/item/weapon/cartridge/rd(src)
-		new /obj/item/clothing/shoes/white(src)
-		new /obj/item/clothing/shoes/leather(src)
-		new /obj/item/clothing/gloves/latex(src)
-		new /obj/item/device/radio/headset/heads/rd(src)
-		new /obj/item/weapon/tank/air(src)
-		new /obj/item/clothing/mask/gas(src)
-		new /obj/item/device/flash(src)
-		return
+/obj/structure/closet/secure_closet/RD/WillContain()
+	return list(
+		/obj/item/clothing/suit/bio_suit/scientist = 2,
+		/obj/item/clothing/head/bio_hood/scientist = 2,
+		/obj/item/clothing/under/rank/research_director,
+		/obj/item/clothing/under/rank/research_director/rdalt,
+		/obj/item/clothing/under/rank/research_director/dress_rd,
+		/obj/item/clothing/under/rank/scientist/executive,
+		/obj/item/clothing/suit/storage/toggle/labcoat,
+		/obj/item/clothing/shoes/white,
+		/obj/item/clothing/shoes/leather,
+		/obj/item/clothing/gloves/latex,
+		/obj/item/device/radio/headset/heads/rd,
+		/obj/item/clothing/mask/gas,
+		/obj/item/device/flash,
+		/obj/item/weapon/material/clipboard,
+		/obj/item/clothing/suit/storage/toggle/labcoat/rd
+	)
+
+/obj/structure/closet/secure_closet/animal
+	name = "animal control closet"
+	req_access = list(access_research)
+
+/obj/structure/closet/secure_closet/animal/WillContain()
+	return list(
+		/obj/item/device/assembly/signaler,
+		/obj/item/device/radio/electropack = 3,
+		/obj/item/weapon/gun/launcher/syringe/rapid,
+		/obj/item/weapon/storage/box/syringegun,
+		/obj/item/weapon/storage/box/syringes,
+		/obj/item/weapon/reagent_containers/glass/bottle/chloralhydrate,
+		/obj/item/weapon/reagent_containers/glass/bottle/stoxin
+	)

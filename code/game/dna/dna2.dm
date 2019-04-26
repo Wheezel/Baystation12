@@ -24,13 +24,16 @@
 #define DNA_UI_BEARD_G     5
 #define DNA_UI_BEARD_B     6
 #define DNA_UI_SKIN_TONE   7
-#define DNA_UI_EYES_R      8
-#define DNA_UI_EYES_G      9
-#define DNA_UI_EYES_B      10
-#define DNA_UI_GENDER      11
-#define DNA_UI_BEARD_STYLE 12
-#define DNA_UI_HAIR_STYLE  13
-#define DNA_UI_LENGTH      13 // Update this when you add something, or you WILL break shit.
+#define DNA_UI_SKIN_R      8
+#define DNA_UI_SKIN_G      9
+#define DNA_UI_SKIN_B      10
+#define DNA_UI_EYES_R      11
+#define DNA_UI_EYES_G      12
+#define DNA_UI_EYES_B      13
+#define DNA_UI_GENDER      14
+#define DNA_UI_BEARD_STYLE 15
+#define DNA_UI_HAIR_STYLE  16
+#define DNA_UI_LENGTH      16 // Update this when you add something, or you WILL break shit.
 
 #define DNA_SE_LENGTH 27
 // For later:
@@ -55,10 +58,6 @@ var/global/list/datum/dna/gene/dna_genes[0]
 // Used for genes that check for value rather than a binary on/off.
 #define GENE_ALWAYS_ACTIVATE 1
 
-// Skip checking if it's already active.
-// Used for genes that check for value rather than a binary on/off.
-#define GENE_ALWAYS_ACTIVATE 1
-
 /datum/dna
 	// READ-ONLY, GETS OVERWRITTEN
 	// DO NOT FUCK WITH THESE OR BYOND WILL EAT YOUR FACE
@@ -77,11 +76,12 @@ var/global/list/datum/dna/gene/dna_genes[0]
 
 	// From old dna.
 	var/b_type = "A+"  // Should probably change to an integer => string map but I'm lazy.
-	var/mutantrace = null  // The type of mutant race the player is, if applicable (i.e. potato-man)
 	var/real_name          // Stores the real name of the person who originally got this dna datum. Used primarily for changelings,
 
 	// New stuff
-	var/species = "Human"
+	var/species = SPECIES_HUMAN
+	var/s_base = ""
+	var/list/body_markings = list()
 
 // Make a copy of this strand.
 // USE THIS WHEN COPYING STUFF OR YOU'LL GET CORRUPTION!
@@ -89,9 +89,10 @@ var/global/list/datum/dna/gene/dna_genes[0]
 	var/datum/dna/new_dna = new()
 	new_dna.unique_enzymes=unique_enzymes
 	new_dna.b_type=b_type
-	new_dna.mutantrace=mutantrace
 	new_dna.real_name=real_name
 	new_dna.species=species
+	new_dna.body_markings=body_markings.Copy()
+	new_dna.s_base=s_base
 	for(var/b=1;b<=DNA_SE_LENGTH;b++)
 		new_dna.SE[b]=SE[b]
 		if(b<=DNA_UI_LENGTH)
@@ -121,12 +122,12 @@ var/global/list/datum/dna/gene/dna_genes[0]
 	// FIXME:  Species-specific defaults pls
 	if(!character.h_style)
 		character.h_style = "Skinhead"
-	var/hair = hair_styles_list.Find(character.h_style)
+	var/hair = GLOB.hair_styles_list.Find(character.h_style)
 
 	// Facial Hair
 	if(!character.f_style)
 		character.f_style = "Shaved"
-	var/beard	= facial_hair_styles_list.Find(character.f_style)
+	var/beard	= GLOB.facial_hair_styles_list.Find(character.f_style)
 
 	SetUIValueRange(DNA_UI_HAIR_R,    character.r_hair,    255,    1)
 	SetUIValueRange(DNA_UI_HAIR_G,    character.g_hair,    255,    1)
@@ -140,12 +141,23 @@ var/global/list/datum/dna/gene/dna_genes[0]
 	SetUIValueRange(DNA_UI_EYES_G,    character.g_eyes,    255,    1)
 	SetUIValueRange(DNA_UI_EYES_B,    character.b_eyes,    255,    1)
 
+	SetUIValueRange(DNA_UI_SKIN_R,    character.r_skin,    255,    1)
+	SetUIValueRange(DNA_UI_SKIN_G,    character.g_skin,    255,    1)
+	SetUIValueRange(DNA_UI_SKIN_B,    character.b_skin,    255,    1)
+
 	SetUIValueRange(DNA_UI_SKIN_TONE, 35-character.s_tone, 220,    1) // Value can be negative.
 
 	SetUIState(DNA_UI_GENDER,         character.gender!=MALE,        1)
 
-	SetUIValueRange(DNA_UI_HAIR_STYLE,  hair,  hair_styles_list.len,       1)
-	SetUIValueRange(DNA_UI_BEARD_STYLE, beard, facial_hair_styles_list.len,1)
+	SetUIValueRange(DNA_UI_HAIR_STYLE,  hair,  GLOB.hair_styles_list.len,       1)
+	SetUIValueRange(DNA_UI_BEARD_STYLE, beard, GLOB.facial_hair_styles_list.len,1)
+
+	body_markings.Cut()
+	s_base = character.s_base
+	for(var/obj/item/organ/external/E in character.organs)
+		E.s_base = s_base
+		if(E.markings.len)
+			body_markings[E.organ_tag] = E.markings.Copy()
 
 	UpdateUI()
 
@@ -361,4 +373,4 @@ var/global/list/datum/dna/gene/dna_genes[0]
 	ResetSE()
 
 	unique_enzymes = md5(character.real_name)
-	reg_dna[unique_enzymes] = character.real_name
+	GLOB.reg_dna[unique_enzymes] = character.real_name

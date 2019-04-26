@@ -11,11 +11,10 @@
 		return
 	next_click = world.time + 1
 
-	if(client.buildmode) // comes after object.Click to allow buildmode gui objects to be clicked
-		build_click(src, client.buildmode, params, A)
-		return
-
 	var/list/modifiers = params2list(params)
+	if(modifiers["shift"] && modifiers["ctrl"])
+		CtrlShiftClickOn(A)
+		return
 	if(modifiers["middle"])
 		MiddleClickOn(A)
 		return
@@ -29,13 +28,21 @@
 		CtrlClickOn(A)
 		return
 
-	if(stat || lockcharge || weakened || stunned || paralysis)
+	if(incapacitated())
 		return
 
-	if(next_move >= world.time)
+	if(!canClick())
 		return
 
 	face_atom(A) // change direction to face what you clicked on
+
+	if(silicon_camera.in_camera_mode)
+		silicon_camera.camera_mode_off()
+		if(is_component_functioning("camera"))
+			silicon_camera.captureimage(A, usr)
+		else
+			to_chat(src, "<span class='userdanger'>Your camera isn't functional.</span>")
+		return
 
 	/*
 	cyborg restrained() currently does nothing
@@ -57,9 +64,6 @@
 		return
 
 	if(W == A)
-		next_move = world.time + 8
-		if(W.flags&USEDELAY)
-			next_move += 5
 
 		W.attack_self(src)
 		return
@@ -67,31 +71,24 @@
 	// cyborgs are prohibited from using storage items so we can I think safely remove (A.loc in contents)
 	if(A == loc || (A in loc) || (A in contents))
 		// No adjacency checks
-		next_move = world.time + 8
-		if(W.flags&USEDELAY)
-			next_move += 5
 
-		var/resolved = A.attackby(W,src)
+		var/resolved = W.resolve_attackby(A, src, params)
 		if(!resolved && A && W)
-			W.afterattack(A,src,1,params)
+			W.afterattack(A, src, 1, params) // 1 indicates adjacency
 		return
 
 	if(!isturf(loc))
 		return
 
-	// cyborgs are prohibited from using storage items so we can I think safely remove (A.loc && isturf(A.loc.loc))
-	if(isturf(A) || isturf(A.loc))
+	var/sdepth = A.storage_depth_turf()
+	if(isturf(A) || isturf(A.loc) || (sdepth != -1 && sdepth <= 1))
 		if(A.Adjacent(src)) // see adjacent.dm
-			next_move = world.time + 10
-			if(W.flags&USEDELAY)
-				next_move += 5
 
-			var/resolved = A.attackby(W, src)
+			var/resolved = W.resolve_attackby(A, src, params)
 			if(!resolved && A && W)
-				W.afterattack(A, src, 1, params)
+				W.afterattack(A, src, 1, params) // 1 indicates adjacency
 			return
 		else
-			next_move = world.time + 10
 			W.afterattack(A, src, 0, params)
 			return
 	return
@@ -100,6 +97,57 @@
 /mob/living/silicon/robot/MiddleClickOn(var/atom/A)
 	cycle_modules()
 	return
+
+//Give cyborgs hotkey clicks without breaking existing uses of hotkey clicks
+// for non-doors/apcs
+/mob/living/silicon/robot/CtrlShiftClickOn(var/atom/A)
+	A.BorgCtrlShiftClick(src)
+
+/mob/living/silicon/robot/ShiftClickOn(var/atom/A)
+	A.BorgShiftClick(src)
+
+/mob/living/silicon/robot/CtrlClickOn(var/atom/A)
+	A.BorgCtrlClick(src)
+
+/mob/living/silicon/robot/AltClickOn(var/atom/A)
+	A.BorgAltClick(src)
+
+/atom/proc/BorgCtrlShiftClick(var/mob/living/silicon/robot/user) //forward to human click if not overriden
+	CtrlShiftClick(user)
+
+/obj/machinery/door/airlock/BorgCtrlShiftClick()
+	AICtrlShiftClick()
+
+/atom/proc/BorgShiftClick(var/mob/living/silicon/robot/user) //forward to human click if not overriden
+	ShiftClick(user)
+
+/obj/machinery/door/airlock/BorgShiftClick()  // Opens and closes doors! Forwards to AI code.
+	AIShiftClick()
+
+/atom/proc/BorgCtrlClick(var/mob/living/silicon/robot/user) //forward to human click if not overriden
+	CtrlClick(user)
+
+/obj/machinery/door/airlock/BorgCtrlClick() // Bolts doors. Forwards to AI code.
+	AICtrlClick()
+
+/obj/machinery/power/apc/BorgCtrlClick() // turns off/on APCs. Forwards to AI code.
+	AICtrlClick()
+
+/obj/machinery/turretid/BorgCtrlClick() //turret control on/off. Forwards to AI code.
+	AICtrlClick()
+
+/atom/proc/BorgAltClick(var/mob/living/silicon/robot/user)
+	AltClick(user)
+	return
+
+/obj/machinery/door/airlock/BorgAltClick() // Eletrifies doors. Forwards to AI code.
+	AICtrlAltClick()
+
+/obj/machinery/turretid/BorgAltClick() //turret lethal on/off. Forwards to AI code.
+	AIAltClick()
+
+/obj/machinery/atmospherics/binary/pump/BorgAltClick()
+	return AltClick()
 
 /*
 	As with AI, these are not used in click code,

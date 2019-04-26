@@ -20,10 +20,6 @@
 	icon_state = "emitter_right"
 	reference = "emitter_right"
 
-/obj/structure/particle_accelerator/particle_emitter/update_icon()
-	..()
-	return
-
 /obj/structure/particle_accelerator/particle_emitter/proc/set_delay(var/delay)
 	if(delay && delay >= 0)
 		src.fire_delay = delay
@@ -44,6 +40,6 @@
 			if(2)
 				A = new/obj/effect/accelerated_particle/strong(T, dir)
 		if(A)
-			A.dir = src.dir
+			A.set_dir(src.dir)
 			return 1
 	return 0

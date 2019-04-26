@@ -1,11 +1,13 @@
 //This file was auto-corrected by findeclaration.exe on 25.5.2012 20:42:31
 
 /obj/machinery/computer/prisoner
-	name = "Prisoner Management"
+	name = "prisoner management console"
 	icon = 'icons/obj/computer.dmi'
-	icon_state = "explosive"
+	icon_keyboard = "security_key"
+	icon_screen = "explosive"
+	light_color = "#a91515"
 	req_access = list(access_armory)
-	circuit = "/obj/item/weapon/circuitboard/prisoner"
+	circuit = /obj/item/weapon/circuitboard/prisoner
 	var/id = 0.0
 	var/temp = null
 	var/status = 0
@@ -16,11 +18,6 @@
 
 	attack_ai(var/mob/user as mob)
 		return src.attack_hand(user)
-
-
-	attack_paw(var/mob/user as mob)
-		return
-
 
 	attack_hand(var/mob/user as mob)
 		if(..())
@@ -35,7 +32,7 @@
 			var/turf/Tr = null
 			for(var/obj/item/weapon/implant/chem/C in world)
 				Tr = get_turf(C)
-				if((Tr) && (Tr.z != src.z))	continue//Out of range
+				if((Tr) && !AreConnectedZLevels(Tr.z, src.z))	continue // Out of range
 				if(!C.implanted) continue
 				dat += "[C.imp_in.name] | Remaining Units: [C.reagents.total_volume] | Inject: "
 				dat += "<A href='?src=\ref[src];inject1=\ref[C]'>(<font color=red>(1)</font>)</A>"
@@ -45,12 +42,12 @@
 			dat += "<HR>Tracking Implants<BR>"
 			for(var/obj/item/weapon/implant/tracking/T in world)
 				Tr = get_turf(T)
-				if((Tr) && (Tr.z != src.z))	continue//Out of range
+				if((Tr) && !AreConnectedZLevels(Tr.z, src.z))	continue // Out of range
 				if(!T.implanted) continue
-				var/loc_display = "Unknown"
+				var/loc_display = "Space"
 				var/mob/living/carbon/M = T.imp_in
-				if(M.z == 1 && !istype(M.loc, /turf/space))
-					var/turf/mob_loc = get_turf_loc(M)
+				if(!istype(M.loc, /turf/space))
+					var/turf/mob_loc = get_turf(M)
 					loc_display = mob_loc.loc
 				if(T.malfunction)
 					loc_display = pick(teleportlocs)
@@ -64,7 +61,7 @@
 		return
 
 
-	process()
+	Process()
 		if(!..())
 			src.updateDialog()
 		return
@@ -92,18 +89,15 @@
 				if(src.allowed(usr))
 					screen = !screen
 				else
-					usr << "Unauthorized Access."
+					to_chat(usr, "Unauthorized Access.")
 
 			else if(href_list["warn"])
-				var/warning = copytext(sanitize(input(usr,"Message:","Enter your message here!","")),1,MAX_MESSAGE_LEN)
+				var/warning = sanitize(input(usr,"Message:","Enter your message here!",""))
 				if(!warning) return
 				var/obj/item/weapon/implant/I = locate(href_list["warn"])
 				if((I)&&(I.imp_in))
 					var/mob/living/carbon/R = I.imp_in
-					R << "\green You hear a voice in your head saying: '[warning]'"
+					to_chat(R, "<span class='notice'>You hear a voice in your head saying: '[warning]'</span>")
 
-			src.add_fingerprint(usr)
 		src.updateUsrDialog()
 		return
-
-

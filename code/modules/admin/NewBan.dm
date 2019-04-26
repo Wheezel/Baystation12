@@ -106,7 +106,10 @@ var/savefile/Banlist
 
 	Banlist.cd = "/base"
 	if ( Banlist.dir.Find("[ckey][computerid]") )
-		usr << text("\red Ban already exists.")
+		to_chat(usr, "<span class='warning'>Ban already exists.</span>")
+		return 0
+	else if (!ckey)
+		to_chat(usr, "<span class='warning'>Ckey does not exist.</span>")
 		return 0
 	else
 		Banlist.dir.Add("[ckey][computerid]")
@@ -139,7 +142,7 @@ var/savefile/Banlist
 		ban_unban_log_save("[key_name_admin(usr)] unbanned [key]")
 		log_admin("[key_name_admin(usr)] unbanned [key]")
 		message_admins("[key_name_admin(usr)] unbanned: [key]")
-		feedback_inc("ban_unban",1)
+		SSstatistics.add_field("ban_unban",1)
 		usr.client.holder.DB_ban_unban( ckey(key), BANTYPE_ANY_FULLBAN)
 	for (var/A in Banlist.dir)
 		Banlist.cd = "/base/[A]"
@@ -168,7 +171,7 @@ var/savefile/Banlist
 /datum/admins/proc/unbanpanel()
 	var/count = 0
 	var/dat
-	//var/dat = "<HR><B>Unban Player:</B> \blue(U) = Unban , (E) = Edit Ban\green (Total<HR><table border=1 rules=all frame=void cellspacing=0 cellpadding=3 >"
+	//var/dat = "<HR><B>Unban Player:</B> <span class='notice'>(U) = Unban , (E) = Edit Ban</span> <span class='good'>(Total<HR><table border=1 rules=all frame=void cellspacing=0 cellpadding=3 ></span>"
 	Banlist.cd = "/base"
 	for (var/A in Banlist.dir)
 		count++

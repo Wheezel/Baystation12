@@ -1,325 +1,556 @@
-dmm_suite
+///////////////////////////////////////////////////////////////
+//SS13 Optimized Map loader
+//////////////////////////////////////////////////////////////
 
-	var/debug_file = file("maploader_debug.txt")
+//global datum that will preload variables on atoms instanciation
+GLOBAL_VAR_INIT(use_preloader, FALSE)
+GLOBAL_DATUM_INIT(_preloader, /dmm_suite/preloader, new)
 
-	load_map(var/dmm_file as file, var/z_offset as num, var/y_offset as num, var/x_offset as num, var/load_speed = 0 as num)
-		if(!z_offset)
-			z_offset = world.maxz + 1
+/datum/map_load_metadata
+	var/bounds
+	var/list/atoms_to_initialise
 
-		//Ensure values are sane.
-		else if(z_offset < 0)
-			z_offset = abs(z_offset)
-		else if(!isnum(z_offset))
-			z_offset = 0
+/dmm_suite
+		// /"([a-zA-Z]+)" = \(((?:.|\n)*?)\)\n(?!\t)|\((\d+),(\d+),(\d+)\) = \{"([a-zA-Z\n]*)"\}/g
+	var/static/regex/dmmRegex = new/regex({""(\[a-zA-Z]+)" = \\(((?:.|\n)*?)\\)\n(?!\t)|\\((\\d+),(\\d+),(\\d+)\\) = \\{"(\[a-zA-Z\n]*)"\\}"}, "g")
+		// /^[\s\n]+"?|"?[\s\n]+$|^"|"$/g
+	var/static/regex/trimQuotesRegex = new/regex({"^\[\\s\n]+"?|"?\[\\s\n]+$|^"|"$"}, "g")
+		// /^[\s\n]+|[\s\n]+$/
+	var/static/regex/trimRegex = new/regex("^\[\\s\n]+|\[\\s\n]+$", "g")
+	var/static/list/modelCache = list()
+	var/static/space_key
+	#ifdef TESTING
+	var/static/turfsSkipped
+	#endif
 
-		if(x_offset < 0)
-			x_offset = abs(x_offset)
-		else if(!isnum(x_offset))
-			x_offset = 0
+/**
+ * Construct the model map and control the loading process
+ *
+ * WORKING :
+ *
+ * 1) Makes an associative mapping of model_keys with model
+ *		e.g aa = /turf/unsimulated/wall{icon_state = "rock"}
+ * 2) Read the map line by line, parsing the result (using parse_grid)
+ *
+ */
+/dmm_suite/load_map(var/dmm_file, var/x_offset, var/y_offset, var/z_offset, var/cropMap, var/measureOnly, var/no_changeturf, var/clear_contents, var/lower_crop_x, var/lower_crop_y, var/upper_crop_x, var/upper_crop_y)
+	//How I wish for RAII
+	Master.StartLoadingMap()
+	space_key = null
+	#ifdef TESTING
+	turfsSkipped = 0
+	#endif
+	. = load_map_impl(dmm_file, x_offset, y_offset, z_offset, cropMap, measureOnly, no_changeturf, clear_contents, lower_crop_x, upper_crop_x, lower_crop_y, upper_crop_y)
+	#ifdef TESTING
+	if(turfsSkipped)
+		testing("Skipped loading [turfsSkipped] default turfs")
+	#endif
+	Master.StopLoadingMap()
 
-		if(y_offset < 0)
-			y_offset = abs(y_offset)
-		else if(!isnum(y_offset))
-			y_offset = 0
+/dmm_suite/proc/load_map_impl(dmm_file, x_offset, y_offset, z_offset, cropMap, measureOnly, no_changeturf, clear_contents, x_lower = -INFINITY, x_upper = INFINITY, y_lower = -INFINITY, y_upper = INFINITY)
+	var/tfile = dmm_file//the map file we're creating
+	if(isfile(tfile))
+		tfile = file2text(tfile)
 
-		debug_file << "Starting Map Load @ ([x_offset], [y_offset], [z_offset]), [load_speed] tiles per second."
+	if(!x_offset)
+		x_offset = 1
+	if(!y_offset)
+		y_offset = 1
+	if(!z_offset)
+		z_offset = world.maxz + 1
 
-		//Handle slowed loading.
-		var/delay_chance = 0
-		if(load_speed > 0)
-			//Chance out of 100 every tenth of a second.
-			delay_chance = 1000 / load_speed
+	var/list/bounds = list(1.#INF, 1.#INF, 1.#INF, -1.#INF, -1.#INF, -1.#INF)
+	var/list/grid_models = list()
+	var/key_len = 0
 
-		//String holding a quotation mark.
-		var/quote = ascii2text(34)
+	var/stored_index = 1
 
-		var/input_file = file2text(dmm_file)
-		var/input_file_len = length(input_file)
+	var/list/atoms_to_initialise = list()
+	var/list/atoms_to_delete = list()
 
-		//Stores the contents of each tile model in the map
-		var/list/grid_models = list()
-		//Length of the tile model code.  e.g. "aaa" is 3 long.
-		var/key_len = length(copytext(input_file, 2 ,findtext(input_file, quote, 2)))
-		//The key of the default tile model.  (In SS13 this is: "/turf/space,/area")
-		var/default_key
+	while(dmmRegex.Find(tfile, stored_index))
+		stored_index = dmmRegex.next
 
-		debug_file << "	Building turf array."
+		// "aa" = (/type{vars=blah})
+		if(dmmRegex.group[1]) // Model
+			var/key = dmmRegex.group[1]
+			if(grid_models[key]) // Duplicate model keys are ignored in DMMs
+				continue
+			if(key_len != length(key))
+				if(!key_len)
+					key_len = length(key)
+				else
+					throw EXCEPTION("Inconsistant key length in DMM")
+			if(!measureOnly)
+				grid_models[key] = dmmRegex.group[2]
 
-		//Iterates through the mapfile to build the model tiles for the map.
-		for(var/line_position = 1; line_position < input_file_len; line_position = findtext(input_file,"\n", line_position) + 1)
-			var/next_line = copytext(input_file, line_position, findtext(input_file,"\n", line_position) - 1)
+		// (1,1,1) = {"aaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"}
+		else if(dmmRegex.group[3]) // Coords
+			if(!key_len)
+				throw EXCEPTION("Coords before model definition in DMM")
 
-			//If the first character in the line is not a quote, the model tiles are all defined.
-			if(copytext(next_line, 1, 2) != quote)
-				break
+			var/curr_x = text2num(dmmRegex.group[3])
 
-			//Copy contents of the model into the grid_models list.
-			var/model_key = copytext(next_line, 2, findtext(input_file, quote, 2))
-			var/model_contents = copytext(next_line, findtext(next_line, "=" ) + 3)
-			if(!default_key && model_contents == "[world.turf],[world.area]")
-				default_key = model_key
-			grid_models[model_key] = model_contents
-			if(prob(delay_chance))
-				sleep(1)
+			if(curr_x < x_lower || curr_x > x_upper)
+				continue
 
-		//Co-ordinates of the tile being loaded.
-		var/z_coordinate = -1
-		var/y_coordinate = 0
-		var/x_coordinate = 0
+			var/xcrdStart = curr_x + x_offset - 1
+			//position of the currently processed square
+			var/xcrd
+			var/ycrd = text2num(dmmRegex.group[4]) + y_offset - 1
+			var/zcrd = text2num(dmmRegex.group[5]) + z_offset - 1
 
-		//Store the
-		var/y_depth = 0
+			var/is_connected_to_lower_levels = AreConnectedZLevels(zcrd, z_offset)
+			var/is_on_an_existing_zlevel = zcrd <= world.maxz
 
-		//Iterate through all z-levels to load the tiles.
-		for(var/z_position = findtext(input_file, "\n(1,1,"); TRUE; z_position = findtext(input_file, "\n(1,1,", z_position + 1))
-			//break when there are no more z-levels.
-			if(z_position == 0)
-				break
+			if (is_on_an_existing_zlevel && !is_connected_to_lower_levels)
+				continue
 
-			//Increment the z_coordinate and update the world's borders
-			z_coordinate++
-			world.maxz = max(world.maxz, z_coordinate + z_offset)
+			var/zexpansion = zcrd > world.maxz
+			if(zexpansion && !measureOnly) // don't actually expand the world if we're only measuring bounds
+				if(cropMap)
+					continue
+				else
+					world.maxz = zcrd //create a new z_level if needed
+				if(!no_changeturf)
+					WARNING("Z-level expansion occurred without no_changeturf set, this may cause problems when /turf/post_change is called.")
 
-			//Here we go!
-			y_coordinate = 0
-			y_depth = 0
-			var/z_level = copytext(input_file, \
-						findtext(input_file, quote + "\n", z_position) + 2,\
-						findtext(input_file, "\n" + quote, z_position) + 1)
+			bounds[MAP_MINX] = min(bounds[MAP_MINX], Clamp(xcrdStart, x_lower, x_upper))
+			bounds[MAP_MINZ] = min(bounds[MAP_MINZ], zcrd)
+			bounds[MAP_MAXZ] = max(bounds[MAP_MAXZ], zcrd)
 
-			//Iterate through each line, increasing the y_coordinate.
-			for(var/grid_position = 1; grid_position != 0; grid_position = findtext(z_level, "\n", grid_position) + 1)
-				//Grab this line of data.
-				var/grid_line = copytext(z_level, grid_position, findtext(z_level, "\n", grid_position))
+			var/list/gridLines = splittext(dmmRegex.group[6], "\n")
 
-				//Compute the size of the z-levels y axis.
-				if(!y_depth)
-					y_depth = length(z_level) / (length(grid_line) + 1)
-					y_depth += y_offset
-					if(y_depth != round(y_depth, 1))
-						debug_file << "	Warning: y_depth is not a round number"
+			var/leadingBlanks = 0
+			while(leadingBlanks < gridLines.len && gridLines[++leadingBlanks] == "")
+			if(leadingBlanks > 1)
+				gridLines.Cut(1, leadingBlanks) // Remove all leading blank lines.
 
-					//And update the worlds variables.
-					if(world.maxy < y_depth)
-						world.maxy = y_depth
-					//The top of the map is the highest "y" co-ordinate, so we start there and iterate downwards
-					if(!y_coordinate)
-						y_coordinate = y_depth + 1
+			if(!gridLines.len) // Skip it if only blank lines exist.
+				continue
 
-				//Decrement and load this line of the map.
-				y_coordinate--
-				x_coordinate = x_offset
+			if(gridLines.len && gridLines[gridLines.len] == "")
+				gridLines.Cut(gridLines.len) // Remove only one blank line at the end.
 
-				//Iterate through the line loading the model tile data.
-				for(var/model_position = 1; model_position <= length(grid_line); model_position += key_len)
-					x_coordinate++
+			bounds[MAP_MINY] = min(bounds[MAP_MINY], Clamp(ycrd, y_lower, y_upper))
+			ycrd += gridLines.len - 1 // Start at the top and work down
 
-					//Find the model key and load that model.
-					var/model_key = copytext(grid_line, model_position, model_position + key_len)
-					//If the key is the default one, skip it and save the computation time.
-					if(model_key == default_key)
+			if(!cropMap && ycrd > world.maxy)
+				if(!measureOnly)
+					world.maxy = ycrd // Expand Y here.  X is expanded in the loop below
+				bounds[MAP_MAXY] = max(bounds[MAP_MAXY], Clamp(ycrd, y_lower, y_upper))
+			else
+				bounds[MAP_MAXY] = max(bounds[MAP_MAXY], Clamp(min(ycrd, world.maxy), y_lower, y_upper))
+
+			var/maxx = xcrdStart
+			if(measureOnly)
+				for(var/line in gridLines)
+					maxx = max(maxx, xcrdStart + length(line) / key_len - 1)
+			else
+				for(var/line in gridLines)
+					if((ycrd - y_offset + 1) < y_lower || (ycrd - y_offset + 1) > y_upper)				//Reverse operation and check if it is out of bounds of cropping.
+						--ycrd
 						continue
+					if(ycrd <= world.maxy && ycrd >= 1)
+						xcrd = xcrdStart
+						for(var/tpos = 1 to length(line) - key_len + 1 step key_len)
+							if((xcrd - x_offset + 1) < x_lower || (xcrd - x_offset + 1) > x_upper)			//Same as above.
+								++xcrd
+								continue								//X cropping.
+							if(xcrd > world.maxx)
+								if(cropMap)
+									break
+								else
+									world.maxx = xcrd
 
-					if(world.maxx < x_coordinate)
-						world.maxx = x_coordinate
-					parse_grid(grid_models[model_key], x_coordinate, y_coordinate, z_coordinate + z_offset)
+							if(xcrd >= 1)
+								var/model_key = copytext(line, tpos, tpos + key_len)
+								var/no_afterchange = no_changeturf || zexpansion
+								if(!no_afterchange || (model_key != space_key))
+									if(!grid_models[model_key])
+										throw EXCEPTION("Undefined model key in DMM.")
+									var/datum/grid_load_metadata/M = parse_grid(grid_models[model_key], model_key, xcrd, ycrd, zcrd, no_changeturf || zexpansion, clear_contents)
+									if (M)
+										atoms_to_initialise += M.atoms_to_initialise
+										atoms_to_delete += M.atoms_to_delete
+								#ifdef TESTING
+								else
+									++turfsSkipped
+								#endif
+								CHECK_TICK
+							maxx = max(maxx, xcrd)
+							++xcrd
+					--ycrd
+				if (zexpansion)
+					create_lighting_overlays_zlevel(zcrd)
 
-					if(prob(delay_chance))
-						sleep(1)
+			bounds[MAP_MAXX] = Clamp(max(bounds[MAP_MAXX], cropMap ? min(maxx, world.maxx) : maxx), x_lower, x_upper)
 
-				//If we hit the last tile in this z-level, we should break out of the loop.
-				if(grid_position + length(grid_line) + 1 > length(z_level))
+		CHECK_TICK
+
+	if(bounds[1] == 1.#INF) // Shouldn't need to check every item
+		return null
+	else
+		if(!measureOnly)
+			if(clear_contents)
+				for(var/atom/to_delete in atoms_to_delete)
+					qdel(to_delete)
+		var/datum/map_load_metadata/M = new
+		M.bounds = bounds
+		M.atoms_to_initialise = atoms_to_initialise
+		return M
+
+/**
+ * Fill a given tile with its area/turf/objects/mobs
+ * Variable model is one full map line (e.g /turf/unsimulated/wall{icon_state = "rock"}, /area/mine/explored)
+ *
+ * WORKING :
+ *
+ * 1) Read the model string, member by member (delimiter is ',')
+ *
+ * 2) Get the path of the atom and store it into a list
+ *
+ * 3) a) Check if the member has variables (text within '{' and '}')
+ *
+ * 3) b) Construct an associative list with found variables, if any (the atom index in members is the same as its variables in members_attributes)
+ *
+ * 4) Instanciates the atom with its variables
+ *
+ */
+
+/datum/grid_load_metadata
+	var/list/atoms_to_initialise
+	var/list/atoms_to_delete
+
+/dmm_suite/proc/types_to_delete()
+	return list(
+		/mob/living,
+		/obj/effect,
+		/obj/item,
+		/obj/machinery,
+		/obj/mecha,
+		/obj/structure,
+	)
+
+/dmm_suite/proc/parse_grid(model as text, model_key as text, xcrd as num,ycrd as num,zcrd as num, no_changeturf as num, clear_contents as num)
+	/*Method parse_grid()
+	- Accepts a text string containing a comma separated list of type paths of the
+		same construction as those contained in a .dmm file, and instantiates them.
+	*/
+
+	var/list/members //will contain all members (paths) in model (in our example : /turf/unsimulated/wall and /area/mine/explored)
+	var/list/members_attributes //will contain lists filled with corresponding variables, if any (in our example : list(icon_state = "rock") and list())
+	var/list/cached = modelCache[model]
+	var/index
+
+	if(cached)
+		members = cached[1]
+		members_attributes = cached[2]
+	else
+		/////////////////////////////////////////////////////////
+		//Constructing members and corresponding variables lists
+		////////////////////////////////////////////////////////
+
+		members = list()
+		members_attributes = list()
+		index = 1
+
+		var/old_position = 1
+		var/dpos
+
+		do
+			//finding next member (e.g /turf/unsimulated/wall{icon_state = "rock"} or /area/mine/explored)
+			dpos = find_next_delimiter_position(model, old_position, ",", "{", "}") //find next delimiter (comma here) that's not within {...}
+
+			var/full_def = trim_text(copytext(model, old_position, dpos)) //full definition, e.g : /obj/foo/bar{variables=derp}
+			var/variables_start = findtext(full_def, "{")
+			var/atom_def = text2path(trim_text(copytext(full_def, 1, variables_start))) //path definition, e.g /obj/foo/bar
+			old_position = dpos + 1
+
+			if(!atom_def) // Skip the item if the path does not exist.  Fix your crap, mappers!
+	#ifdef UNIT_TEST
+				log_error("Couldn't find atom path specified in map: [full_def]")
+	#endif
+				if (dpos == 0)
 					break
+				else
+					continue
 
-			//Break out of the loop when we hit the end of the file.
-			if(findtext(input_file, quote + "}", z_position) + 2 >= input_file_len)
+			members += atom_def
+
+			//transform the variables in text format into a list (e.g {var1="derp"; var2; var3=7} => list(var1="derp", var2, var3=7))
+			var/list/fields
+
+			if(variables_start)//if there's any variable
+				full_def = copytext(full_def,variables_start+1,length(full_def))//removing the last '}'
+				fields = readlist(full_def, ";")
+				if(fields.len)
+					if(!trim(fields[fields.len]))
+						--fields.len
+					for(var/I in fields)
+						var/value = fields[I]
+						if(istext(value))
+							fields[I] = apply_text_macros(value)
+
+			//then fill the members_attributes list with the corresponding variables
+			members_attributes.len++
+			members_attributes[index++] = fields
+
+			CHECK_TICK
+		while(dpos != 0)
+
+		//check and see if we can just skip this turf
+		//So you don't have to understand this horrid statement, we can do this if
+		// 1. no_changeturf is set
+		// 2. the space_key isn't set yet
+		// 3. there are exactly 2 members
+		// 4. with no attributes
+		// 5. and the members are world.turf and world.area
+		// Basically, if we find an entry like this: "XXX" = (/turf/default, /area/default)
+		// We can skip calling this proc every time we see XXX
+		if(no_changeturf && !space_key && members.len == 2 && members_attributes.len == 2 && length(members_attributes[1]) == 0 && length(members_attributes[2]) == 0 && (world.area in members) && (world.turf in members))
+			space_key = model_key
+			return
+
+		modelCache[model] = list(members, members_attributes)
+
+	////////////////
+	//Instanciation
+	////////////////
+
+	//The next part of the code assumes there's ALWAYS an /area AND a /turf on a given tile
+	var/turf/crds = locate(xcrd,ycrd,zcrd)
+
+	var/is_not_noop = FALSE
+	var/atoms_to_delete = list()
+
+	//first instance the /area and remove it from the members list
+	index = members.len
+	if(members[index] != /area/template_noop)
+		is_not_noop = TRUE
+		var/list/attr = members_attributes[index]
+		if (LAZYLEN(attr))
+			GLOB._preloader.setup(attr)//preloader for assigning  set variables on atom creation
+		var/atype = members[index]
+		var/atom/instance
+		for(var/area/A in world)
+			if(A.type == atype)
+				instance = A
 				break
+		if(!instance)
+			instance = new atype(null)
+		if(crds)
+			instance.contents.Add(crds)
+
+		if(GLOB.use_preloader && instance)
+			GLOB._preloader.load(instance)
+
+	//then instance the /turf and, if multiple tiles are presents, simulates the DMM underlays piling effect
+
+	var/first_turf_index = 1
+	while(!ispath(members[first_turf_index], /turf)) //find first /turf object in members
+		first_turf_index++
+
+	//turn off base new Initialization until the whole thing is loaded
+	SSatoms.map_loader_begin()
+	//since we've switched off autoinitialisation, record atoms to initialise later
+	var/list/atoms_to_initialise = list()
+
+	//instanciate the first /turf
+	var/turf/T
+	if(members[first_turf_index] != /turf/template_noop)
+		is_not_noop = TRUE
+		T = instance_atom(members[first_turf_index],members_attributes[first_turf_index],crds,no_changeturf)
+		atoms_to_initialise += T
+
+	if(T)
+		//if others /turf are presents, simulates the underlays piling effect
+		index = first_turf_index + 1
+		while(index <= members.len - 1) // Last item is an /area
+			var/underlay = T.appearance
+			T = instance_atom(members[index],members_attributes[index],crds,no_changeturf)//instance new turf
+			T.underlays += underlay
+			index++
+			atoms_to_initialise += T
+
+	if (clear_contents && is_not_noop)
+		for (var/type_to_delete in types_to_delete())
+			for (var/atom/pre_existing in crds)
+				if (istype(pre_existing, type_to_delete))
+					atoms_to_delete |= pre_existing
+
+	//finally instance all remainings objects/mobs
+	for(index in 1 to first_turf_index-1)
+		atoms_to_initialise += instance_atom(members[index],members_attributes[index],crds,no_changeturf)
+	//Restore initialization to the previous valsue
+	SSatoms.map_loader_stop()
+
+	var/datum/grid_load_metadata/M = new
+	M.atoms_to_initialise = atoms_to_initialise
+	M.atoms_to_delete = atoms_to_delete
+	return M
+
+////////////////
+//Helpers procs
+////////////////
+
+//Instance an atom at (x,y,z) and gives it the variables in attributes
+/dmm_suite/proc/instance_atom(path,list/attributes, turf/crds, no_changeturf)
+	if (LAZYLEN(attributes))
+		GLOB._preloader.setup(attributes, path)
+
+	if(crds)
+		if(!no_changeturf && ispath(path, /turf))
+			. = crds.ChangeTurf(path, FALSE, TRUE)
+		else
+			. = create_atom(path, crds)//first preloader pass
+
+	if(GLOB.use_preloader && .)//second preloader pass, for those atoms that don't ..() in New()
+		GLOB._preloader.load(.)
+
+	//custom CHECK_TICK here because we don't want things created while we're sleeping to delay initialization.
+	if(TICK_CHECK)
+		SSatoms.map_loader_stop()
+		stoplag()
+		SSatoms.map_loader_begin()
+
+/dmm_suite/proc/create_atom(path, crds)
+	// Doing this async is impossible, as we must return the ref.
+	return new path (crds)
+
+//text trimming (both directions) helper proc
+//optionally removes quotes before and after the text (for variable name)
+/dmm_suite/proc/trim_text(what as text,trim_quotes=0)
+	if(trim_quotes)
+		return trimQuotesRegex.Replace(what, "")
+	else
+		return trimRegex.Replace(what, "")
 
 
-	proc/parse_grid(var/model as text, var/x_coordinate as num, var/y_coordinate as num, var/z_coordinate as num)
-		//Accepts a text string containing a comma separated list of type paths of the
-		//  same construction as those contained in a .dmm file, and instantiates them.
+//find the position of the next delimiter,skipping whatever is comprised between opening_escape and closing_escape
+//returns 0 if reached the last delimiter
+/dmm_suite/proc/find_next_delimiter_position(text as text,initial_position as num, delimiter=",",opening_escape="\"",closing_escape="\"")
+	var/position = initial_position
+	var/next_delimiter = findtext(text,delimiter,position,0)
+	var/next_opening = findtext(text,opening_escape,position,0)
 
-		var/list/text_strings = list()
-		for(var/index = 1; findtext(model, quote); index++)
-			/*Loop: Stores quoted portions of text in text_strings, and replaces them with an
-				index to that list.
-				- Each iteration represents one quoted section of text.
-				*/
-			//Add the next section of quoted text to the list
-			var/first_quote = findtext(model, quote)
-			var/second_quote = findtext(model, quote, first_quote + 1)
-			var/quoted_chunk = copytext(model, first_quote + 1, second_quote)
-			text_strings += quoted_chunk
-			//Then remove the quoted section.
-			model = copytext(model, 1, first_quote) + "~[index]" + copytext(model, second_quote + 1)
+	while((next_opening != 0) && (next_opening < next_delimiter))
+		position = findtext(text,closing_escape,next_opening + 1,0)+1
+		next_delimiter = findtext(text,delimiter,position,0)
+		next_opening = findtext(text,opening_escape,position,0)
 
-		var/debug_output = 0
-		//if(x_coordinate == 86 && y_coordinate == 88 && z_coordinate == 7)
-		//	debug_output = 1
+	return next_delimiter
 
-		if(debug_output)
-			debug_file << "	Now debugging turf: [model] ([x_coordinate], [y_coordinate], [z_coordinate])"
+/dmm_suite/proc/readlistitem(text as text)
+	//Check for string
+	if(findtext(text,"\"",1,2))
+		. = copytext(text,2,findtext(text,"\"",3,0))
 
-		var/next_position = 1
-		for(var/data_position = 1, next_position || data_position != 1, data_position = next_position + 1)
-			next_position = findtext(model, ",/", data_position)
+	//Check for number
+	else if(isnum(text2num(text)) && text == "[text2num(text)]") //text2num will parse truthy false positives; this demands that the only numbers parsed as such are properly formatted ones.
+		. = text2num(text)
 
-			var/full_def = copytext(model, data_position, next_position)
+	//Check for null
+	else if(text == "null")
+		. = null
 
-			if(debug_output)
-				debug_file << "		Current Line: [full_def] -- ([data_position] - [next_position])"
+	//Check for list
+	else if(copytext(text,1,5) == "list")
+		. = readlist(copytext(text,6,length(text)))
 
-			/*Loop: Identifies each object's data, instantiates it, and reconstitues it's fields.
-				- Each iteration represents one object's data, including type path and field values.
-				*/
+	//Check for file
+	else if(copytext(text,1,2) == "'")
+		. = file(copytext(text,2,length(text)))
 
-			//Load the attribute data.
-			var/attribute_position = findtext(full_def,"{")
-			var/atom_def = text2path(copytext(full_def, 1, attribute_position))
+	//Check for path
+	else if(ispath(text2path(text)))
+		. = text2path(text)
 
-			var/list/attributes = list()
-			if(attribute_position)
-				full_def = copytext(full_def, attribute_position + 1)
-				if(debug_output)
-					debug_file << "		Atom Def: [atom_def]"
-					debug_file << "		Parameters: [full_def]"
+//build a list from variables in text form (e.g {var1="derp"; var2; var3=7} => list(var1="derp", var2, var3=7))
+//return the filled list
+/dmm_suite/proc/readlist(text as text, delimiter=",")
+	var/list/to_return = list()
 
-				var/next_attribute = 1
-				for(attribute_position = 1, next_attribute || attribute_position != 1, attribute_position = next_attribute + 1)
-					next_attribute = findtext(full_def, ";", attribute_position)
+	var/position
+	var/old_position = 1
 
-					//Loop: Identifies each attribute/value pair, and stores it in attributes[].
-					attributes +=  copytext(full_def, attribute_position, next_attribute)
+	do
+		//find next delimiter that is not within  "..."
+		position = find_next_delimiter_position(text,old_position,delimiter)
 
-			//Construct attributes associative list
-			var/list/fields = list()
-			for(var/attribute in attributes)
-				var/trim_left = trim_text(copytext(attribute, 1, findtext(attribute, "=")))
-				var/trim_right = trim_text(copytext(attribute, findtext(attribute, "=") + 1))
+		//check if this is a simple variable (as in list(var1, var2)) or an associative one (as in list(var1="foo",var2=7))
+		var/equal_position = findtext(text,"=",old_position, position)
 
-				if(findtext(trim_right, "list("))
-					trim_right = get_list(trim_right, text_strings)
+		var/trim_left = trim_text(copytext(text,old_position,(equal_position ? equal_position : position)), 0)
+		old_position = position + 1
 
-				else if(findtext(trim_right, "~"))//Check for strings
-					while(findtext(trim_right,"~"))
-						var/reference_index = copytext(trim_right, findtext(trim_right, "~") + 1)
-						trim_right = text_strings[text2num(reference_index)]
+		if(!length(trim_left))
+			if(position == 0)
+				break // That terminal commas are ignored is real dm behavior.
+			to_return.len++
+			continue
 
-				//Check for numbers
-				else if(isnum(text2num(trim_right)))
-					trim_right = text2num(trim_right)
+		var/left = readlistitem(trim_left)
+		if(equal_position)
+			if(!left && trim_left != "null")
+				left = trim_left // This is dm behavior: unindentifiable keys in associative lists are parsed as literal strings.
+			if(left == 1.#INF || left == -1.#INF)
+				left = trim_left // This is not valid as a list index; we could let it runtime, but if associative it should be parsed as "inf" or "-inf" instead.
+		to_return += left
 
-				//Check for file
-				else if(copytext(trim_right,1,2) == "'")
-					trim_right = file(copytext(trim_right, 2, length(trim_right)))
+		if(equal_position)//associative var, so do the association
+			if(isnum(left))
+				crash_with("Numerical key in associative list.")
+				break // This is invalid; apparently dm will runtime in this situation.
+			var/trim_right = trim_text(copytext(text,equal_position+1,position))//the content of the variable
+			to_return[left] = readlistitem(trim_right)
 
-				fields[trim_left] = trim_right
-				sleep(-1)
+	while(position != 0)
 
+	return to_return
 
-			if(debug_output)
-				var/return_data = "		Debug Fields:"
-				for(var/item in fields)
-					return_data += " [item] = [fields[item]];"
-				debug_file << return_data
+/dmm_suite/Destroy()
+	..()
+	return QDEL_HINT_HARDDEL_NOW
 
-			//Begin Instanciation
-			var/atom/instance
+//////////////////
+//Preloader datum
+//////////////////
 
-			if(ispath(atom_def,/area))
-				instance = locate(atom_def)
-				if(!istype(instance, atom_def))
-					instance = new atom_def
-				instance.contents.Add(locate(x_coordinate,y_coordinate,z_coordinate))
+/dmm_suite/preloader
+	parent_type = /datum
+	var/list/attributes
+	var/target_path
 
-			else
-				instance = new atom_def(locate(x_coordinate,y_coordinate,z_coordinate))
-				if(instance)
-					for(var/item in fields)
-						instance.vars[item] = fields[item]
-				else if(!(atom_def in borked_paths))
-					borked_paths += atom_def
-					var/return_data = "	Failure [atom_def] @ ([x_coordinate], [y_coordinate], [z_coordinate])  fields:"
-					for(var/item in fields)
-						return_data += " [item] = [fields[item]];"
-					debug_file << return_data
+/dmm_suite/preloader/proc/setup(list/the_attributes, path)
+	if(LAZYLEN(the_attributes))
+		GLOB.use_preloader = TRUE
+		attributes = the_attributes
+		target_path = path
 
-			sleep(-1)
-		return 1
+/dmm_suite/preloader/proc/load(atom/what)
+	for(var/attribute in attributes)
+		var/value = attributes[attribute]
+		if(islist(value))
+			value = deepCopyList(value)
+		try
+			what.vars[attribute] = value
+		catch (var/ex)
+			var/found = FALSE
+			for (var/V in what.vars)
+				if (deep_string_equals(V, attribute))
+					what.vars[V] = value
+					log_debug("Successfully performed manual var detection for var [V] \ref[V] on provided attribute [attribute] \ref[attribute] for atom [what]")
+					found = TRUE
+					break
+			if (!found)
+				throw ex
+	GLOB.use_preloader = FALSE
 
-	var/list/borked_paths = list()
+/area/template_noop
+	name = "Area Passthrough"
+	icon_state = "unknown"
 
-	proc/trim_text(var/what as text)
-		while(length(what) && findtext(what, " ", 1, 2))
-			what = copytext(what, 2)
-
-		while(length(what) && findtext(what, " ", length(what)))
-			what = copytext(what, 1, length(what))
-
-		return what
-
-	proc/get_list(var/text, var/list/text_strings)
-		//First, trim the data to just the list contents
-		var/list_start = findtext(text, "(") + 1
-		var/list_end = findtext(text, ")", list_start)
-		var/list_contents = copytext(text, list_start, list_end)
-
-		//Then, we seperate it into the individual entries
-
-		var/list/entries = list()
-		var/entry_end = 1
-
-		for(var/entry_start = 1, entry_end || entry_start != 1, entry_start = entry_end + 1)
-			entry_end = findtext(list_contents, ",", entry_start)
-			entries += copytext(list_contents, entry_start, entry_end)
-
-		//Finally, we assemble the completed list.
-		var/list/final_list = list()
-		for(var/entry in entries)
-			var/equals_position = findtext(entry, "=")
-
-			if(equals_position)
-				var/trim_left = trim_text(copytext(entry, 1, equals_position))
-				var/trim_right = trim_text(copytext(entry, equals_position + 1))
-
-				if(findtext(trim_right, "list("))
-					trim_right = get_list(trim_right, text_strings)
-
-				else if(findtext(trim_right, "~"))//Check for strings
-					while(findtext(trim_right,"~"))
-						var/reference_index = copytext(trim_right, findtext(trim_right, "~") + 1)
-						trim_right = text_strings[text2num(reference_index)]
-
-				//Check for numbers
-				else if(isnum(text2num(trim_right)))
-					trim_right = text2num(trim_right)
-
-				//Check for file
-				else if(copytext(trim_right,1,2) == "'")
-					trim_right = file(copytext(trim_right, 2, length(trim_right)))
-
-				if(findtext(trim_left, "~"))//Check for strings
-					while(findtext(trim_left,"~"))
-						var/reference_index = copytext(trim_left, findtext(trim_left, "~") + 1)
-						trim_left = text_strings[text2num(reference_index)]
-
-				final_list[trim_left] = trim_right
-
-			else
-				if(findtext(entry, "~"))//Check for strings
-					while(findtext(entry, "~"))
-						var/reference_index = copytext(entry, findtext(entry, "~") + 1)
-						entry = text_strings[text2num(reference_index)]
-
-				//Check for numbers
-				else if(isnum(text2num(entry)))
-					entry = text2num(entry)
-
-				//Check for file
-				else if(copytext(entry, 1, 2) == "'")
-					entry = file(copytext(entry, 2, length(entry)))
-
-				final_list += entry
-
-		return final_list
+/turf/template_noop
+	name = "Turf Passthrough"
+	icon_state = "noop"

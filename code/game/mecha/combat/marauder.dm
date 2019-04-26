@@ -51,7 +51,7 @@
 	ME.attach(src)
 	ME = new /obj/item/mecha_parts/mecha_equipment/tesla_energy_relay(src)
 	ME.attach(src)
-	ME = new /obj/item/mecha_parts/mecha_equipment/antiproj_armor_booster(src)
+	ME = new /obj/item/mecha_parts/mecha_equipment/armor_booster/antiproj_armor_booster(src)
 	ME.attach(src)
 	src.smoke_system.set_up(3, 0, src)
 	src.smoke_system.attach(src)
@@ -62,8 +62,8 @@
 	var/obj/item/mecha_parts/mecha_equipment/ME
 	if(equipment.len)//Now to remove it and equip anew.
 		for(ME in equipment)
-			equipment -= ME
-			del(ME)
+			ME.detach(src)
+			qdel(ME)
 	ME = new /obj/item/mecha_parts/mecha_equipment/weapon/ballistic/scattershot(src)
 	ME.attach(src)
 	ME = new /obj/item/mecha_parts/mecha_equipment/weapon/ballistic/missile_rack/explosive(src)
@@ -72,14 +72,18 @@
 	ME.attach(src)
 	ME = new /obj/item/mecha_parts/mecha_equipment/tesla_energy_relay(src)
 	ME.attach(src)
-	ME = new /obj/item/mecha_parts/mecha_equipment/antiproj_armor_booster(src)
+	ME = new /obj/item/mecha_parts/mecha_equipment/armor_booster/antiproj_armor_booster(src)
 	ME.attach(src)
 	return
 
+/obj/mecha/combat/marauder/Destroy()
+	qdel(smoke_system)
+	..()
+
 /obj/mecha/combat/marauder/relaymove(mob/user,direction)
 	if(user != src.occupant) //While not "realistic", this piece is player friendly.
-		user.loc = get_turf(src)
-		user << "You climb out from [src]"
+		user.dropInto(loc)
+		to_chat(user, "You climb out from [src]")
 		return 0
 	if(!can_move)
 		return 0
@@ -132,7 +136,7 @@
 		if(get_charge() > 0)
 			thrusters = !thrusters
 			src.log_message("Toggled thrusters.")
-			src.occupant_message("<font color='[src.thrusters?"blue":"red"]'>Thrusters [thrusters?"en":"dis"]abled.")
+			src.occupant_message("<font color='[src.thrusters?"blue":"red"]'>Thrusters [thrusters?"en":"dis"]abled.</font>")
 	return
 
 
@@ -151,6 +155,7 @@
 			smoke_ready = 1
 	return
 
+//TODO replace this with zoom code that doesn't increase peripherial vision
 /obj/mecha/combat/marauder/verb/zoom()
 	set category = "Exosuit Interface"
 	set name = "Zoom"
@@ -164,7 +169,7 @@
 		src.occupant_message("<font color='[src.zoom?"blue":"red"]'>Zoom mode [zoom?"en":"dis"]abled.</font>")
 		if(zoom)
 			src.occupant.client.view = 12
-			src.occupant << sound('sound/mecha/imag_enh.ogg',volume=50)
+			sound_to(src.occupant, sound('sound/mecha/imag_enh.ogg',volume=50))
 		else
 			src.occupant.client.view = world.view//world.view - default mob view size
 	return
@@ -207,5 +212,5 @@
 	if (href_list["smoke"])
 		src.smoke()
 	if (href_list["toggle_zoom"])
-		src.zoom()
+		src.zoom(usr)
 	return

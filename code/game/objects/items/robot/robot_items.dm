@@ -3,28 +3,6 @@
 /**********************************************************************
 						Cyborg Spec Items
 ***********************************************************************/
-//Might want to move this into several files later but for now it works here
-/obj/item/borg/stun
-	name = "electrified arm"
-	icon = 'icons/obj/decals.dmi'
-	icon_state = "shock"
-
-	attack(mob/M as mob, mob/living/silicon/robot/user as mob)
-		M.attack_log += text("\[[time_stamp()]\] <font color='orange'>Has been attacked with [src.name] by [user.name] ([user.ckey])</font>")
-		user.attack_log += text("\[[time_stamp()]\] <font color='red'>Used the [src.name] to attack [M.name] ([M.ckey])</font>")
-		msg_admin_attack("[user.name] ([user.ckey]) used the [src.name] to attack [M.name] ([M.ckey]) (<A HREF='?_src_=holder;adminplayerobservecoodjump=1;X=[user.x];Y=[user.y];Z=[user.z]'>JMP</a>)")
-
-		user.cell.charge -= 30
-
-		M.Weaken(5)
-		if (M.stuttering < 5)
-			M.stuttering = 5
-		M.Stun(5)
-
-		for(var/mob/O in viewers(M, null))
-			if (O.client)
-				O.show_message("\red <B>[user] has prodded [M] with an electrically-charged arm!</B>", 1, "\red You hear someone fall", 2)
-
 /obj/item/borg/overdrive
 	name = "overdrive"
 	icon = 'icons/obj/decals.dmi'
@@ -37,22 +15,30 @@
 	icon = 'icons/obj/decals.dmi'
 	icon_state = "securearea"
 	var/sight_mode = null
+	var/hud_type
 
 
 /obj/item/borg/sight/xray
-	name = "\proper x-ray Vision"
+	name = "\proper x-ray vision"
 	sight_mode = BORGXRAY
 
 
 /obj/item/borg/sight/thermal
 	name = "\proper thermal vision"
 	sight_mode = BORGTHERM
+	icon_state = "thermal"
+	icon = 'icons/obj/clothing/obj_eyes.dmi'
 
 
 /obj/item/borg/sight/meson
 	name = "\proper meson vision"
 	sight_mode = BORGMESON
+	icon_state = "meson"
+	icon = 'icons/obj/clothing/obj_eyes.dmi'
 
+/obj/item/borg/sight/material
+	name = "\proper material scanner vision"
+	sight_mode = BORGMATERIAL
 
 /obj/item/borg/sight/hud
 	name = "hud"
@@ -61,19 +47,32 @@
 
 /obj/item/borg/sight/hud/med
 	name = "medical hud"
+	icon_state = "healthhud"
+	icon = 'icons/obj/clothing/obj_eyes.dmi'
+	hud_type = HUD_MEDICAL
 
-
-	New()
-		..()
-		hud = new /obj/item/clothing/glasses/hud/health(src)
-		return
+/obj/item/borg/sight/hud/med/Initialize()
+	. = ..()
+	hud = new /obj/item/clothing/glasses/hud/health(src)
 
 
 /obj/item/borg/sight/hud/sec
 	name = "security hud"
+	icon_state = "securityhud"
+	icon = 'icons/obj/clothing/obj_eyes.dmi'
+	hud_type = HUD_SECURITY
+
+/obj/item/borg/sight/hud/Initialize()
+	. = ..()
+	hud = new /obj/item/clothing/glasses/hud/security(src)
 
 
-	New()
-		..()
-		hud = new /obj/item/clothing/glasses/hud/security(src)
-		return
+/obj/item/borg/sight/hud/jani
+	name = "janitor hud"
+	icon_state = "janihud"
+	icon = 'icons/obj/clothing/obj_eyes.dmi'
+	hud_type = HUD_JANITOR
+
+/obj/item/borg/sight/hud/jani/Initialize()
+	. = ..()
+	hud = new /obj/item/clothing/glasses/hud/janitor(src)

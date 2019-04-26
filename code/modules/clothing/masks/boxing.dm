@@ -1,29 +1,32 @@
 /obj/item/clothing/mask/balaclava
 	name = "balaclava"
-	desc = "LOADSAMONEY"
+	desc = "Designed to both hide identities and keep your face comfy and warm."
 	icon_state = "balaclava"
 	item_state = "balaclava"
-	flags = FPRINT|TABLEPASS|BLOCKHAIR
-	flags_inv = HIDEFACE
-	w_class = 2
+	flags_inv = HIDEFACE|BLOCKHAIR
+	body_parts_covered = FACE|HEAD
+	down_body_parts_covered = HEAD
+	down_flags_inv = BLOCKHEADHAIR
+	down_icon_state = "balaclava_r"
+	pull_mask = 1
+	w_class = ITEM_SIZE_SMALL
+	sprite_sheets = list(
+		SPECIES_UNATHI = 'icons/mob/species/unathi/onmob_mask_unathi.dmi',
+		)
 
 /obj/item/clothing/mask/balaclava/tactical
 	name = "green balaclava"
-	desc = "Designed to both hide identities and keep your face comfy and warm."
 	icon_state = "swatclava"
-	item_state = "balaclava"
-	flags = FPRINT|TABLEPASS|BLOCKHAIR
-	flags_inv = HIDEFACE
-	w_class = 2
+	down_icon_state = "swatclava_r"
 
 /obj/item/clothing/mask/luchador
 	name = "Luchador Mask"
 	desc = "Worn by robust fighters, flying high to defeat their foes!"
 	icon_state = "luchag"
 	item_state = "luchag"
-	flags = FPRINT|TABLEPASS|BLOCKHAIR
-	flags_inv = HIDEFACE
-	w_class = 2
+	flags_inv = HIDEFACE|BLOCKHAIR
+	body_parts_covered = HEAD|FACE
+	w_class = ITEM_SIZE_SMALL
 	siemens_coefficient = 3.0
 
 /obj/item/clothing/mask/luchador/tecnicos

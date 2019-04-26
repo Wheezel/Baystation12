@@ -1,96 +1,46 @@
-/*
- * This datum gets revision info from local svn 'entries' file
- * Path to the directory containing it should be in 'config/svndir.txt' file
- *
- */
+var/global/datum/getrev/revdata = new()
 
-var/global/datum/getrev/revdata = new("config/svndir.txt")
-
-//Oh yeah, I'm an OOP fag, lalala
 /datum/getrev
+	var/branch
 	var/revision
-	var/commiter
-	var/svndirpath
-	var/revhref
+	var/date
+	var/showinfo
 
-	proc/abort()
-		spawn()
-			del src
+/datum/getrev/New()
+	var/list/head_branch = file2list(".git/HEAD", "\n")
+	if(head_branch.len)
+		branch = copytext(head_branch[1], 17)
 
-	New(filename)
-		..()
-		var/list/Lines = file2list(filename)
-		if(!Lines.len)	return abort()
-		for(var/t in Lines)
-			if(!t)	continue
-			t = trim(t)
-			if (length(t) == 0)
-				continue
-			else if (copytext(t, 1, 2) == "#")
-				continue
-			var/pos = findtext(t, " ")
-			var/name = null
-			var/value = null
-			if (pos)
-				name = lowertext(copytext(t, 1, pos))
-				value = copytext(t, pos + 1)
-			else
-				name = lowertext(t)
-			if(!name)
-				continue
-			switch(name)
-				if("svndir")
-					svndirpath = value
-				if("revhref")
-					revhref = value
+	var/list/head_log = file2list(".git/logs/HEAD", "\n")
+	for(var/line=head_log.len, line>=1, line--)
+		if(head_log[line])
+			var/list/last_entry = splittext(head_log[line], " ")
+			if(last_entry.len < 2)	continue
+			revision = last_entry[2]
+			// Get date/time
+			if(last_entry.len >= 5)
+				var/unix_time = text2num(last_entry[5])
+				if(unix_time)
+					date = unix2date(unix_time)
+			break
 
-		if(svndirpath && fexists(svndirpath) && fexists("[svndirpath]/entries") && isfile(file("[svndirpath]/entries")))
-			var/list/filelist = file2list("[svndirpath]/entries")
-			var/s_archive = "" //Stores the previous line so the revision owner can be assigned.
+	world.log << "Running revision:"
+	world.log << branch
+	world.log << date
+	world.log << revision
 
-			//This thing doesn't count blank lines, so doing filelist[4] isn't working.
-			for(var/s in filelist)
-				if(!commiter)
-					if(s == "has-props")//The line before this is the committer.
-						commiter = s_archive
-				if(!revision)
-					var/n = text2num(s)
-					if(isnum(n))
-						if(n > 5000 && n < 99999) //Do you think we'll still be up and running at r100000? :) ~Errorage
-							revision = s
-				if(revision && commiter)
-					break
-				s_archive = s
-			if(!revision)
-				abort()
-			diary << "Revision info loaded succesfully"
-			return
-		return abort()
-
-	proc/getRevisionText()
-		var/output
-		if(revhref)
-			output = {"<a href="[revhref][revision]">[revision]</a>"}
-		else
-			output = revision
-		return output
-
-	proc/showInfo()
-		return {"<html>
-					<head>
-					</head>
-					<body>
-					<p><b>Server Revision:</b> [getRevisionText()]<br/>
-					<b>Author:</b> [commiter]</p>
-					</body>
-					<html>"}
-
-client/verb/showrevinfo()
+/client/verb/showrevinfo()
 	set category = "OOC"
 	set name = "Show Server Revision"
-	var/output =  "Sorry, the revision info is unavailable."
-	output = file2text("/home/bay12/live/data/gitcommit")
-	output += "Current Infomational Settings: <br>"
-	output += "Protect Authority Roles From Tratior: [config.protect_roles_from_antagonist]<br>"
-	usr << browse(output,"window=revdata");
-	return
+	set desc = "Check the current server code revision"
+
+	to_chat(src, "<b>Client Version:</b> [byond_version]")
+	if(revdata.revision)
+		var/server_revision = revdata.revision
+		if(config.githuburl)
+			server_revision = "<a href='[config.githuburl]/commit/[server_revision]'>[server_revision]</a>"
+		to_chat(src, "<b>Server Revision:</b> [server_revision] - [revdata.branch] - [revdata.date]")
+	else
+		to_chat(src, "<b>Server Revision:</b> Revision Unknown")
+	to_chat(src, "Game ID: <b>[game_id]</b>")
+	to_chat(src, "Current map: [GLOB.using_map.full_name]")

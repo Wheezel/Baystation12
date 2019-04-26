@@ -13,6 +13,7 @@
 	var/body_elements
 	var/head_content = ""
 	var/content = ""
+	var/title_buttons = ""
 
 
 /datum/browser/New(nuser, nwindow_id, ntitle = 0, nwidth = 0, nheight = 0, var/atom/nref = null)
@@ -27,10 +28,19 @@
 		height = nheight
 	if (nref)
 		ref = nref
+	// If a client exists, but they have disabled fancy windowing, disable it!
+	if(user && user.client && user.client.get_preference_value(/datum/client_preference/browser_style) == GLOB.PREF_PLAIN)
+		return
 	add_stylesheet("common", 'html/browser/common.css') // this CSS sheet is common to all UIs
+
+/datum/browser/proc/set_title(ntitle)
+	title = format_text(ntitle)
 
 /datum/browser/proc/add_head_content(nhead_content)
 	head_content = nhead_content
+
+/datum/browser/proc/set_title_buttons(ntitle_buttons)
+	title_buttons = ntitle_buttons
 
 /datum/browser/proc/set_window_options(nwindow_options)
 	window_options = nwindow_options
@@ -67,15 +77,16 @@
 	if (title_image)
 		title_attributes = "class='uiTitle icon' style='background-image: url([title_image]);'"
 
-	return {"<!DOCTYPE HTML PUBLIC "-//W3C//DTD HTML 4.01 Transitional//EN" "http://www.w3.org/TR/html4/loose.dtd">
+	return {"<!DOCTYPE html>
 <html>
-	<meta http-equiv="Content-Type" content="text/html; charset=ISO-8859-1">
+	<meta charset=ISO-8859-1">
 	<head>
+		<meta http-equiv="X-UA-Compatible" content="IE=edge" />
 		[head_content]
 	</head>
 	<body scroll=auto>
 		<div class='uiWrapper'>
-			[title ? "<div class='uiTitleWrapper'><div [title_attributes]><tt>[title]</tt></div></div>" : ""]
+			[title ? "<div class='uiTitleWrapper'><div [title_attributes]><tt>[title]</tt></div><div class='uiTitleButtons'>[title_buttons]</div></div>" : ""]
 			<div class='uiContent'>
 	"}
 
@@ -100,6 +111,12 @@
 	user << browse(get_content(), "window=[window_id];[window_size][window_options]")
 	if (use_onclose)
 		onclose(user, window_id, ref)
+
+/datum/browser/proc/update(var/force_open = 0, var/use_onclose = 1)
+	if(force_open)
+		open(use_onclose)
+	else
+		send_output(user, get_content(), "[window_id].browser")
 
 /datum/browser/proc/close()
 	user << browse(null, "window=[window_id]")
@@ -137,14 +154,17 @@
 // Otherwise, the user mob's machine var will be reset directly.
 //
 /proc/onclose(mob/user, windowid, var/atom/ref=null)
-	if(!user.client) return
+	if(!user || !user.client) return
 	var/param = "null"
 	if(ref)
 		param = "\ref[ref]"
 
-	winset(user, windowid, "on-close=\".windowclose [param]\"")
+	spawn(2)
+		if(!user.client) return
+		winset(user, windowid, "on-close=\".windowclose [param]\"")
 
-	//world << "OnClose [user]: [windowid] : ["on-close=\".windowclose [param]\""]"
+//	log_debug("OnClose [user]: [windowid] : ["on-close=\".windowclose [param]\""]")
+
 
 
 // the on-close client verb
@@ -156,19 +176,21 @@
 	set hidden = 1						// hide this verb from the user's panel
 	set name = ".windowclose"			// no autocomplete on cmd line
 
-	//world << "windowclose: [atomref]"
+//	log_debug("windowclose: [atomref]")
+
 	if(atomref!="null")				// if passed a real atomref
 		var/hsrc = locate(atomref)	// find the reffed atom
-		var/href = "close=1"
 		if(hsrc)
-			//world << "[src] Topic [href] [hsrc]"
+//			log_debug("[src] Topic [href] [hsrc]")
+
 			usr = src.mob
-			src.Topic(href, params2list(href), hsrc)	// this will direct to the atom's
+			src.Topic("close=1", list("close"="1"), hsrc)	// this will direct to the atom's
 			return										// Topic() proc via client.Topic()
 
 	// no atomref specified (or not found)
 	// so just reset the user mob's machine var
 	if(src && src.mob)
-		//world << "[src] was [src.mob.machine], setting to null"
+//		log_debug("[src] was [src.mob.machine], setting to null")
+
 		src.mob.unset_machine()
 	return
